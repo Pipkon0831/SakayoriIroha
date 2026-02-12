@@ -14,4 +14,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   iterations: 100
   walkLength: 100
-  startRandomlyEachIteration: 1
+  startRandomlyEachIteration: 0
