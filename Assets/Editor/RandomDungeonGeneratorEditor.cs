@@ -19,7 +19,7 @@ public class RandomDungeonGeneratorEditor : Editor
         base.OnInspectorGUI();
         if (GUILayout.Button("生成地牢"))
         {
-            generator.GenerateDungon();
+            generator.GenerateDungeon();
         }
     }
 }

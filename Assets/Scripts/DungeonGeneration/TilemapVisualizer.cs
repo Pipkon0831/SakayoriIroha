@@ -1,3 +1,4 @@
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -14,7 +15,7 @@ public class TilemapVisualizer : MonoBehaviour
     {
         PaintTiles(floorPositions, floorTilemap, floorTile);
     }
-    
+
     private void PaintTiles(IEnumerable<Vector2Int> positions, Tilemap tilemap, TileBase tile)
     {
         foreach (var position in positions)
@@ -22,12 +23,12 @@ public class TilemapVisualizer : MonoBehaviour
             PaintSingleTile(tilemap, tile, position);
         }
     }
-    
+
     internal void PaintSingleBasicWall(Vector2Int position)
     {
         PaintSingleTile(wallTilemap, wallTop, position);
     }
-    
+
     private void PaintSingleTile(Tilemap tilemap, TileBase tile, Vector2Int position)
     {
         var tilePosition = tilemap.WorldToCell((Vector3Int)position);
