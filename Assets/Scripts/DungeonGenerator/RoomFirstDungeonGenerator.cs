@@ -15,6 +15,8 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
     private int offset = 1;
     [SerializeField]
     private bool randomWalkRooms = false;
+    [SerializeField]
+    private int corridorWidth = 2;
 
     protected override void RunProceduralGeneration()
     {
@@ -90,7 +92,10 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
     {
         HashSet<Vector2Int> corridor = new HashSet<Vector2Int>();
         var position = currentRoomCenter;
-        corridor.Add(position);
+        // 新增：先添加初始位置的宽度扩展
+        AddCorridorWidth(corridor, position, corridorWidth);
+
+        // 先处理Y轴
         while (position.y != destination.y)
         {
             if(destination.y > position.y)
@@ -101,8 +106,10 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
             {
                 position += Vector2Int.down;
             }
-            corridor.Add(position);
+            AddCorridorWidth(corridor, position, corridorWidth);
         }
+
+        // 再处理X轴
         while (position.x != destination.x)
         {
             if (destination.x > position.x)
@@ -112,9 +119,29 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
             {
                 position += Vector2Int.left;
             }
-            corridor.Add(position);
+            AddCorridorWidth(corridor, position, corridorWidth);
         }
         return corridor;
+    }
+
+// 新增：RoomFirst走廊宽度扩展辅助方法
+    private void AddCorridorWidth(HashSet<Vector2Int> corridor, Vector2Int centerPos, int width)
+    {
+        if (width <= 1)
+        {
+            corridor.Add(centerPos);
+            return;
+        }
+
+        // 向四个方向扩展（简化版，也可以按方向精准扩展）
+        for (int x = -width / 2; x <= width / 2; x++)
+        {
+            for (int y = -width / 2; y <= width / 2; y++)
+            {
+                Vector2Int newPos = centerPos + new Vector2Int(x, y);
+                corridor.Add(newPos);
+            }
+        }
     }
 
     private Vector2Int FindClosestPointTo(Vector2Int currentRoomCenter, List<Vector2Int> roomCenters)

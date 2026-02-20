@@ -30,10 +30,28 @@ MonoBehaviour:
     - {fileID: 1114646796741094055, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
     - {fileID: -9048192641222686197, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
     - {fileID: 5211745164843661978, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
+    - {fileID: -4582401877760778594, guid: a0d3fbbc155eb404a87f827b40a48dfe, type: 3}
     m_GameObject: {fileID: 0}
     m_MinAnimationSpeed: 1
     m_MaxAnimationSpeed: 1
-    m_PerlinScale: 0.3
+    m_PerlinScale: 0.53
     m_Output: 1
     m_ColliderType: 1
     m_RandomTransform: 0

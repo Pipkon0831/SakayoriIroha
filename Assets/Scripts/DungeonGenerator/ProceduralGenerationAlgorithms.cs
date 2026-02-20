@@ -23,7 +23,7 @@ public static class ProceduralGenerationAlgorithms
         return path;
     }
 
-    public static List<Vector2Int> RandomWalkCorridor(Vector2Int startPosition, int corridorLength)
+    public static List<Vector2Int> RandomWalkCorridor(Vector2Int startPosition, int corridorLength, int corridorWidth = 1)
     {
         List<Vector2Int> corridor = new List<Vector2Int>();
         var direction = Direction2D.GetRandomCardinalDirection();
@@ -33,9 +33,40 @@ public static class ProceduralGenerationAlgorithms
         for (int i = 0; i < corridorLength; i++)
         {
             currentPosition += direction;
-            corridor.Add(currentPosition);
+            // 新增：根据宽度扩展走廊
+            AddCorridorWidth(corridor, currentPosition, direction, corridorWidth);
         }
         return corridor;
+    }
+    
+    private static void AddCorridorWidth(List<Vector2Int> corridor, Vector2Int centerPos, Vector2Int direction, int width)
+    {
+        if (width <= 1)
+        {
+            corridor.Add(centerPos);
+            return;
+        }
+
+        // 根据走廊方向确定扩展的垂直方向
+        Vector2Int perpendicularDir;
+        if (direction == Vector2Int.up || direction == Vector2Int.down)
+        {
+            perpendicularDir = Vector2Int.right; // 上下方向的走廊，向左右扩展
+        }
+        else
+        {
+            perpendicularDir = Vector2Int.up; // 左右方向的走廊，向上下扩展
+        }
+
+        // 向两侧扩展
+        for (int w = -width / 2; w <= width / 2; w++)
+        {
+            Vector2Int newPos = centerPos + perpendicularDir * w;
+            if (!corridor.Contains(newPos))
+            {
+                corridor.Add(newPos);
+            }
+        }
     }
 
     public static List<BoundsInt> BinarySpacePartitioning(BoundsInt spaceToSplit, int minWidth, int minHeight)

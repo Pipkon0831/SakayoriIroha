@@ -9,6 +9,8 @@ public class CorridorFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
     [SerializeField]
     private int corridorLength = 14, corridorCount = 5;
     [SerializeField]
+    private int corridorWidth = 2; 
+    [SerializeField]
     [Range(0.1f,1)]
     private float roomPercent = 0.8f;
 
@@ -89,7 +91,8 @@ public class CorridorFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
 
         for (int i = 0; i < corridorCount; i++)
         {
-            var corridor = ProceduralGenerationAlgorithms.RandomWalkCorridor(currentPosition, corridorLength);
+            // 修改：传入走廊宽度参数
+            var corridor = ProceduralGenerationAlgorithms.RandomWalkCorridor(currentPosition, corridorLength, corridorWidth);
             currentPosition = corridor[corridor.Count - 1];
             potentialRoomPositions.Add(currentPosition);
             floorPositions.UnionWith(corridor);
