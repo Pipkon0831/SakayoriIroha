@@ -1,5 +1,4 @@
-using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -7,7 +6,7 @@ using UnityEngine;
 [CustomEditor(typeof(AbstractDungeonGenerator), true)]
 public class RandomDungeonGeneratorEditor : Editor
 {
-    private AbstractDungeonGenerator generator;
+    AbstractDungeonGenerator generator;
 
     private void Awake()
     {
@@ -17,7 +16,7 @@ public class RandomDungeonGeneratorEditor : Editor
     public override void OnInspectorGUI()
     {
         base.OnInspectorGUI();
-        if (GUILayout.Button("生成地牢"))
+        if(GUILayout.Button("创建地牢"))
         {
             generator.GenerateDungeon();
         }
