@@ -6,88 +6,29 @@ using Random = UnityEngine.Random;
 
 public static class ProceduralGenerationAlgorithms
 {
-    
-    public static HashSet<Vector2Int> SimpleRandomWalk(Vector2Int startPosition, int walkLength)
-    {
-        HashSet<Vector2Int> path = new HashSet<Vector2Int>();
-
-        path.Add(startPosition);
-        var previousPosition = startPosition;
-
-        for (int i = 0; i < walkLength; i++)
-        {
-            var newPosition = previousPosition + Direction2D.GetRandomCardinalDirection();
-            path.Add(newPosition);
-            previousPosition = newPosition;
-        }
-        return path;
-    }
-
-    public static List<Vector2Int> RandomWalkCorridor(Vector2Int startPosition, int corridorLength, int corridorWidth = 1)
-    {
-        List<Vector2Int> corridor = new List<Vector2Int>();
-        var direction = Direction2D.GetRandomCardinalDirection();
-        var currentPosition = startPosition;
-        corridor.Add(currentPosition);
-
-        for (int i = 0; i < corridorLength; i++)
-        {
-            currentPosition += direction;
-            // 新增：根据宽度扩展走廊
-            AddCorridorWidth(corridor, currentPosition, direction, corridorWidth);
-        }
-        return corridor;
-    }
-    
-    private static void AddCorridorWidth(List<Vector2Int> corridor, Vector2Int centerPos, Vector2Int direction, int width)
-    {
-        if (width <= 1)
-        {
-            corridor.Add(centerPos);
-            return;
-        }
-
-        // 根据走廊方向确定扩展的垂直方向
-        Vector2Int perpendicularDir;
-        if (direction == Vector2Int.up || direction == Vector2Int.down)
-        {
-            perpendicularDir = Vector2Int.right; // 上下方向的走廊，向左右扩展
-        }
-        else
-        {
-            perpendicularDir = Vector2Int.up; // 左右方向的走廊，向上下扩展
-        }
-
-        // 向两侧扩展
-        for (int w = -width / 2; w <= width / 2; w++)
-        {
-            Vector2Int newPos = centerPos + perpendicularDir * w;
-            if (!corridor.Contains(newPos))
-            {
-                corridor.Add(newPos);
-            }
-        }
-    }
-
+    // 仅保留RoomFirst核心的二进制空间分割方法
     public static List<BoundsInt> BinarySpacePartitioning(BoundsInt spaceToSplit, int minWidth, int minHeight)
     {
         Queue<BoundsInt> roomsQueue = new Queue<BoundsInt>();
         List<BoundsInt> roomsList = new List<BoundsInt>();
         roomsQueue.Enqueue(spaceToSplit);
-        while(roomsQueue.Count > 0)
+        
+        while (roomsQueue.Count > 0)
         {
             var room = roomsQueue.Dequeue();
-            if(room.size.y >= minHeight && room.size.x >= minWidth)
+            if (room.size.y >= minHeight && room.size.x >= minWidth)
             {
-                if(Random.value < 0.5f)
+                if (Random.value < 0.5f)
                 {
-                    if(room.size.y >= minHeight * 2)
+                    if (room.size.y >= minHeight * 2)
                     {
                         SplitHorizontally(minHeight, roomsQueue, room);
-                    }else if(room.size.x >= minWidth * 2)
+                    }
+                    else if (room.size.x >= minWidth * 2)
                     {
                         SplitVertically(minWidth, roomsQueue, room);
-                    }else if(room.size.x >= minWidth && room.size.y >= minHeight)
+                    }
+                    else if (room.size.x >= minWidth && room.size.y >= minHeight)
                     {
                         roomsList.Add(room);
                     }
@@ -130,42 +71,5 @@ public static class ProceduralGenerationAlgorithms
             new Vector3Int(room.size.x, room.size.y - ySplit, room.size.z));
         roomsQueue.Enqueue(room1);
         roomsQueue.Enqueue(room2);
-    }
-}
-
-public static class Direction2D
-{
-    public static List<Vector2Int> cardinalDirectionsList = new List<Vector2Int>
-    {
-        new Vector2Int(0,1), //UP
-        new Vector2Int(1,0), //RIGHT
-        new Vector2Int(0, -1), // DOWN
-        new Vector2Int(-1, 0) //LEFT
-    };
-
-    public static List<Vector2Int> diagonalDirectionsList = new List<Vector2Int>
-    {
-        new Vector2Int(1,1), //UP-RIGHT
-        new Vector2Int(1,-1), //RIGHT-DOWN
-        new Vector2Int(-1, -1), // DOWN-LEFT
-        new Vector2Int(-1, 1) //LEFT-UP
-    };
-
-    public static List<Vector2Int> eightDirectionsList = new List<Vector2Int>
-    {
-        new Vector2Int(0,1), //UP
-        new Vector2Int(1,1), //UP-RIGHT
-        new Vector2Int(1,0), //RIGHT
-        new Vector2Int(1,-1), //RIGHT-DOWN
-        new Vector2Int(0, -1), // DOWN
-        new Vector2Int(-1, -1), // DOWN-LEFT
-        new Vector2Int(-1, 0), //LEFT
-        new Vector2Int(-1, 1) //LEFT-UP
-
-    };
-
-    public static Vector2Int GetRandomCardinalDirection()
-    {
-        return cardinalDirectionsList[UnityEngine.Random.Range(0, cardinalDirectionsList.Count)];
     }
 }

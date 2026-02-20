@@ -4,19 +4,18 @@ using System.Collections.Generic;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
-public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
+// 直接继承抽象类，不再依赖SimpleRandomWalkDungeonGenerator
+public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
 {
     [SerializeField]
     private int minRoomWidth = 4, minRoomHeight = 4;
     [SerializeField]
     private int dungeonWidth = 20, dungeonHeight = 20;
     [SerializeField]
-    [Range(0,10)]
+    [Range(0, 10)]
     private int offset = 1;
     [SerializeField]
-    private bool randomWalkRooms = false;
-    [SerializeField]
-    private int corridorWidth = 2;
+    private int corridorWidth = 2; // 保留走廊宽度配置（可根据需求改为固定值）
 
     protected override void RunProceduralGeneration()
     {
@@ -25,52 +24,31 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
 
     private void CreateRooms()
     {
-        var roomsList = ProceduralGenerationAlgorithms.BinarySpacePartitioning(new BoundsInt((Vector3Int)startPosition, new Vector3Int(dungeonWidth, dungeonHeight, 0)), minRoomWidth, minRoomHeight);
+        // 1. 二进制空间分割生成房间边界
+        var roomsList = ProceduralGenerationAlgorithms.BinarySpacePartitioning(
+            new BoundsInt((Vector3Int)startPosition, new Vector3Int(dungeonWidth, dungeonHeight, 0)), 
+            minRoomWidth, minRoomHeight);
 
-        HashSet<Vector2Int> floor = new HashSet<Vector2Int>();
+        // 2. 生成简单房间（移除随机游走房间逻辑）
+        HashSet<Vector2Int> floor = CreateSimpleRooms(roomsList);
 
-        if (randomWalkRooms)
-        {
-            floor = CreateRoomsRandomly(roomsList);
-        }
-        else
-        {
-            floor = CreateSimpleRooms(roomsList);
-        }
-        
-
+        // 3. 收集房间中心点
         List<Vector2Int> roomCenters = new List<Vector2Int>();
         foreach (var room in roomsList)
         {
             roomCenters.Add((Vector2Int)Vector3Int.RoundToInt(room.center));
         }
 
+        // 4. 连接房间生成走廊
         HashSet<Vector2Int> corridors = ConnectRooms(roomCenters);
         floor.UnionWith(corridors);
 
+        // 5. 绘制地板和墙壁
         tilemapVisualizer.PaintFloorTiles(floor);
         WallGenerator.CreateWalls(floor, tilemapVisualizer);
     }
 
-    private HashSet<Vector2Int> CreateRoomsRandomly(List<BoundsInt> roomsList)
-    {
-        HashSet<Vector2Int> floor = new HashSet<Vector2Int>();
-        for (int i = 0; i < roomsList.Count; i++)
-        {
-            var roomBounds = roomsList[i];
-            var roomCenter = new Vector2Int(Mathf.RoundToInt(roomBounds.center.x), Mathf.RoundToInt(roomBounds.center.y));
-            var roomFloor = RunRandomWalk(randomWalkParameters, roomCenter);
-            foreach (var position in roomFloor)
-            {
-                if(position.x >= (roomBounds.xMin + offset) && position.x <= (roomBounds.xMax - offset) && position.y >= (roomBounds.yMin - offset) && position.y <= (roomBounds.yMax - offset))
-                {
-                    floor.Add(position);
-                }
-            }
-        }
-        return floor;
-    }
-
+    // 连接房间生成走廊（保留宽度扩展）
     private HashSet<Vector2Int> ConnectRooms(List<Vector2Int> roomCenters)
     {
         HashSet<Vector2Int> corridors = new HashSet<Vector2Int>();
@@ -88,43 +66,30 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
         return corridors;
     }
 
+    // 生成两点间的走廊（带宽度扩展）
     private HashSet<Vector2Int> CreateCorridor(Vector2Int currentRoomCenter, Vector2Int destination)
     {
         HashSet<Vector2Int> corridor = new HashSet<Vector2Int>();
         var position = currentRoomCenter;
-        // 新增：先添加初始位置的宽度扩展
         AddCorridorWidth(corridor, position, corridorWidth);
 
         // 先处理Y轴
         while (position.y != destination.y)
         {
-            if(destination.y > position.y)
-            {
-                position += Vector2Int.up;
-            }
-            else if(destination.y < position.y)
-            {
-                position += Vector2Int.down;
-            }
+            position += destination.y > position.y ? Vector2Int.up : Vector2Int.down;
             AddCorridorWidth(corridor, position, corridorWidth);
         }
 
         // 再处理X轴
         while (position.x != destination.x)
         {
-            if (destination.x > position.x)
-            {
-                position += Vector2Int.right;
-            }else if(destination.x < position.x)
-            {
-                position += Vector2Int.left;
-            }
+            position += destination.x > position.x ? Vector2Int.right : Vector2Int.left;
             AddCorridorWidth(corridor, position, corridorWidth);
         }
         return corridor;
     }
 
-// 新增：RoomFirst走廊宽度扩展辅助方法
+    // 走廊宽度扩展辅助方法
     private void AddCorridorWidth(HashSet<Vector2Int> corridor, Vector2Int centerPos, int width)
     {
         if (width <= 1)
@@ -133,7 +98,7 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
             return;
         }
 
-        // 向四个方向扩展（简化版，也可以按方向精准扩展）
+        // 向中心位置四周扩展宽度
         for (int x = -width / 2; x <= width / 2; x++)
         {
             for (int y = -width / 2; y <= width / 2; y++)
@@ -144,6 +109,7 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
         }
     }
 
+    // 找最近的房间中心点
     private Vector2Int FindClosestPointTo(Vector2Int currentRoomCenter, List<Vector2Int> roomCenters)
     {
         Vector2Int closest = Vector2Int.zero;
@@ -151,7 +117,7 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
         foreach (var position in roomCenters)
         {
             float currentDistance = Vector2.Distance(position, currentRoomCenter);
-            if(currentDistance < distance)
+            if (currentDistance < distance)
             {
                 distance = currentDistance;
                 closest = position;
@@ -160,6 +126,7 @@ public class RoomFirstDungeonGenerator : SimpleRandomWalkDungeonGenerator
         return closest;
     }
 
+    // 生成简单房间（核心保留）
     private HashSet<Vector2Int> CreateSimpleRooms(List<BoundsInt> roomsList)
     {
         HashSet<Vector2Int> floor = new HashSet<Vector2Int>();
