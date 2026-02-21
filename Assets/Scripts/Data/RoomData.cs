@@ -30,4 +30,7 @@ public class RoomData
     public List<GameObject> barrierObjects = new List<GameObject>();
     // 房间类型属性
     public RoomType roomType;
+    
+    // 标记该战斗房间是否已被攻略
+    public bool isCleared = false;
 }

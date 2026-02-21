@@ -750,6 +750,7 @@ MonoBehaviour:
     isBlocked: 0
     barrierObjects: []
     roomType: 0
+    isCleared: 0
   - roomBounds:
       m_Position: {x: 38, y: 176, z: 0}
       m_Size: {x: 47, y: 44, z: 0}
@@ -940,6 +941,7 @@ MonoBehaviour:
     isBlocked: 0
     barrierObjects: []
     roomType: 1
+    isCleared: 0
   - roomBounds:
       m_Position: {x: 91, y: 161, z: 0}
       m_Size: {x: 76, y: 49, z: 0}
@@ -1198,6 +1200,7 @@ MonoBehaviour:
     isBlocked: 0
     barrierObjects: []
     roomType: 2
+    isCleared: 0
   - roomBounds:
       m_Position: {x: 105, y: 35, z: 0}
       m_Size: {x: 62, y: 56, z: 0}
@@ -1442,6 +1445,7 @@ MonoBehaviour:
     isBlocked: 0
     barrierObjects: []
     roomType: 2
+    isCleared: 0
   spawnedObjectsParent: {fileID: 1766950153}
 --- !u!4 &1208139128
 Transform:
@@ -78299,6 +78303,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: Player
       objectReference: {fileID: 0}
+    - target: {fileID: 917677424625187389, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
+      propertyPath: moveSpeed
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 917677424625187389, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
+      propertyPath: gameController
+      value: 
+      objectReference: {fileID: 1242324986}
     - target: {fileID: 917677424625187390, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
       propertyPath: m_BodyType
       value: 0

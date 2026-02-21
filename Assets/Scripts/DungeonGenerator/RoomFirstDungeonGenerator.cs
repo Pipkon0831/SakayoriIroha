@@ -148,68 +148,16 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     }
 
 
-// 计算两个房间之间的最短距离
-private int GetShortestDistance(RoomData roomA, RoomData roomB)
-{
-    // 使用 BFS 计算最短路径
-    Dictionary<RoomData, int> distances = BFSCalculateDistances(roomA);
-    return distances.ContainsKey(roomB) ? distances[roomB] : int.MaxValue;
-}
-
-// 找到最大最短距离的房间对
-    private (RoomData, RoomData) FindLongestShortestPathEnds()
-    {
-        if (allRoomData.Count == 0) return (null, null);
-
-        // 从任意房间开始，找到第一个最远房间
-        RoomData startRoom = allRoomData[0];
-        RoomData farthestRoomA = BFSFindFarthestRoom(startRoom);
-
-        // 从房间A开始，找到最远的房间B
-        RoomData farthestRoomB = BFSFindFarthestRoom(farthestRoomA);
-
-        Debug.Log($"✅ 最长的最短路径：{farthestRoomA.center} <-> {farthestRoomB.center}");
-
-        return (farthestRoomA, farthestRoomB);
-    }
-
     private RoomData BFSFindFarthestRoom(RoomData startRoom)
     {
         Dictionary<RoomData, int> distances = BFSCalculateDistances(startRoom);
         return GetFarthestRoom(distances);
     }
 
-    private void LogRoomDistribution()
-    {
-        int bossCount = allRoomData.Count(r => r.roomType == RoomData.RoomType.Boss);
-        int monsterCount = allRoomData.Count(r => r.roomType == RoomData.RoomType.Monster);
-        int rewardCount = allRoomData.Count(r => r.roomType == RoomData.RoomType.Reward); 
-
-        Debug.Log($"✅ 房间分配完成：出生房x1 | Boss房x{bossCount} | 怪物房x{monsterCount} | 奖励房x{rewardCount}");
-    }
-
     private bool IsValidPosition(Vector2Int position)
     {
         return position.x >= startPosition.x && position.x < startPosition.x + dungeonWidth &&
                position.y >= startPosition.y && position.y < startPosition.y + dungeonHeight;
-    }
-
-    private (RoomData, RoomData) FindFarthestRoomPairInGraph()
-    {
-        if (allRoomData.Count == 0) return (null, null);
-        if (allRoomData.Count == 1) return (allRoomData[0], null);
-
-        RoomData startRoom = allRoomData[0];
-        Dictionary<RoomData, int> distancesFromStart = BFSCalculateDistances(startRoom);
-        RoomData farthestRoomA = GetFarthestRoom(distancesFromStart);
-
-        Dictionary<RoomData, int> distancesFromA = BFSCalculateDistances(farthestRoomA);
-        RoomData farthestRoomB = GetFarthestRoom(distancesFromA);
-
-        int maxDistance = distancesFromA[farthestRoomB];
-        Debug.Log($"✅ 最远房间对：{farthestRoomA.center} <-> {farthestRoomB.center} | 距离={maxDistance}");
-
-        return (farthestRoomA, farthestRoomB);
     }
 
     private Dictionary<RoomData, int> BFSCalculateDistances(RoomData startRoom)
