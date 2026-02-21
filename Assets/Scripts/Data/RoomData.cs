@@ -7,6 +7,15 @@ using UnityEngine;
 [System.Serializable]
 public class RoomData
 {
+    // 房间类型枚举（内嵌）
+    public enum RoomType
+    {
+        Spawn,      // 出生房（唯一）
+        Monster,    // 怪物房
+        Reward,     // 奖励房
+        Boss        // Boss房（唯一）
+    }
+
     // 房间的边界（完整范围）
     public BoundsInt roomBounds;
     // 房间的中心点
@@ -19,4 +28,6 @@ public class RoomData
     public bool isBlocked = false;
     // 存储生成的屏障物体（方便后续销毁）
     public List<GameObject> barrierObjects = new List<GameObject>();
+    // 房间类型属性
+    public RoomType roomType;
 }

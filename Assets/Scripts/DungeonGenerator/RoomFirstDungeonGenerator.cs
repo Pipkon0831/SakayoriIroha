@@ -1,68 +1,67 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq; // 添加这一行
 using UnityEngine;
 using Random = UnityEngine.Random;
 
+
 public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
 {
-    [SerializeField]
-    private int minRoomWidth = 4, minRoomHeight = 4;
-    [SerializeField]
-    private int dungeonWidth = 20, dungeonHeight = 20;
-    [SerializeField]
-    [Range(0, 10)]
-    private int offset = 1;
-    [SerializeField]
-    private int corridorWidth = 2;
+    [SerializeField] private int minRoomWidth = 4, minRoomHeight = 4;
+    [SerializeField] private int dungeonWidth = 20, dungeonHeight = 20;
+    [SerializeField] [Range(0, 10)] private int offset = 1;
+    [SerializeField] private int corridorWidth = 2;
 
     [Header("物品/敌人生成配置")]
     [SerializeField] private List<SpawnableObject> spawnableObjects;
 
-    // 保留RoomData列表（后续加屏障直接用）
-    public List<RoomData> allRoomData = new List<RoomData>();
+    [Header("房间类型配置")]
+    [SerializeField] private int monsterRoomWeight = 70;
+    [SerializeField] private int rewardRoomWeight = 20;
+    [SerializeField] private int minRoomsForBoss = 5;
 
-    // 可选：生成物体父节点（方便管理）
+    [Header("Player配置")]
+    [SerializeField] private GameObject player;
+
+    public List<RoomData> allRoomData = new List<RoomData>();
     [Header("生成物体父节点")]
     [SerializeField] private Transform spawnedObjectsParent;
+
+    private Dictionary<RoomData, List<RoomData>> roomConnections;
 
     protected override void RunProceduralGeneration()
     {
         CreateRooms();
+        MovePlayerToSpawnRoomCenter();
     }
 
     private void CreateRooms()
     {
-        // 清空历史数据
         allRoomData.Clear();
         ClearExistingSpawnedObjects();
-        
-        // 1. 二进制空间分割生成房间边界
+
         var generatedRooms = ProceduralGenerationAlgorithms.BinarySpacePartitioning(
-            new BoundsInt((Vector3Int)startPosition, new Vector3Int(dungeonWidth, dungeonHeight, 0)), 
+            new BoundsInt((Vector3Int)startPosition, new Vector3Int(dungeonWidth, dungeonHeight)),
             minRoomWidth, minRoomHeight);
 
-        // 2. 遍历生成的房间，存储完整RoomData（保留核心数据，方便后续用）
         HashSet<Vector2Int> floor = new HashSet<Vector2Int>();
+
         foreach (var roomBounds in generatedRooms)
         {
-            RoomData roomData = new RoomData();
-            roomData.roomBounds = roomBounds;
-            roomData.center = (Vector2Int)Vector3Int.RoundToInt(roomBounds.center);
-            roomData.floorPositions = new HashSet<Vector2Int>();
-            roomData.borderPositions = new List<Vector2Int>();
+            RoomData roomData = new RoomData
+            {
+                roomBounds = roomBounds,
+                center = (Vector2Int)Vector3Int.RoundToInt(roomBounds.center),
+                floorPositions = new HashSet<Vector2Int>(),
+                borderPositions = new List<Vector2Int>()
+            };
 
-            // 存储房间内的地板位置（核心：确保物品只在房间内生成）
             for (int col = offset; col < roomBounds.size.x - offset; col++)
             {
                 for (int row = offset; row < roomBounds.size.y - offset; row++)
                 {
                     Vector2Int position = (Vector2Int)roomBounds.min + new Vector2Int(col, row);
-                    // 校验：确保位置在地牢范围内
-                    if (position.x >= startPosition.x && 
-                        position.x < startPosition.x + dungeonWidth && 
-                        position.y >= startPosition.y && 
-                        position.y < startPosition.y + dungeonHeight)
+                    if (IsValidPosition(position))
                     {
                         roomData.floorPositions.Add(position);
                         floor.Add(position);
@@ -70,149 +69,308 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
                 }
             }
 
-            // 计算房间边界（保留，后续加屏障直接用）
             CalculateRoomBorder(roomData);
 
-            // 只有有效房间才加入列表
             if (roomData.floorPositions.Count > 0)
-            {
                 allRoomData.Add(roomData);
-            }
         }
 
-        // 3. 收集房间中心点（用于生成走廊）
-        List<Vector2Int> roomCenters = new List<Vector2Int>();
-        foreach (var roomData in allRoomData)
-        {
-            roomCenters.Add(roomData.center);
-        }
+        // ⭐ 初始化真实图结构
+        roomConnections = new Dictionary<RoomData, List<RoomData>>();
+        foreach (var room in allRoomData)
+            roomConnections[room] = new List<RoomData>();
 
-        // 4. 连接房间生成走廊
+        // ⭐ 先生成真实走廊 + 构建图
+        List<Vector2Int> roomCenters = new List<Vector2Int>(allRoomData.ConvertAll(r => r.center));
         HashSet<Vector2Int> corridors = ConnectRooms(roomCenters);
         floor.UnionWith(corridors);
 
-        // 5. 绘制地板和墙壁
+        // ⭐ 再根据真实图分配房间类型
+        AssignRoomTypes();
+
         tilemapVisualizer.PaintFloorTiles(floor);
         WallGenerator.CreateWalls(floor, tilemapVisualizer);
     }
 
-    // 保留：计算房间边界（后续加屏障直接调用）
-    private void CalculateRoomBorder(RoomData roomData)
+    private void AssignRoomTypes()
     {
-        BoundsInt bounds = roomData.roomBounds;
-        // 上边界（y最大）
-        for (int x = bounds.min.x; x < bounds.max.x; x++)
-        {
-            roomData.borderPositions.Add(new Vector2Int(x, bounds.max.y - 1));
-        }
-        // 下边界（y最小）
-        for (int x = bounds.min.x; x < bounds.max.x; x++)
-        {
-            roomData.borderPositions.Add(new Vector2Int(x, bounds.min.y));
-        }
-        // 左边界（x最小）
-        for (int y = bounds.min.y; y < bounds.max.y; y++)
-        {
-            roomData.borderPositions.Add(new Vector2Int(bounds.min.x, y));
-        }
-        // 右边界（x最大）
-        for (int y = bounds.min.y; y < bounds.max.y; y++)
-        {
-            roomData.borderPositions.Add(new Vector2Int(bounds.max.x - 1, y));
-        }
-    }
-
-    // 手动触发放置物品/敌人的方法
-    [ContextMenu("在房间内放置物品和敌人")]
-    public void SpawnObjectsInRooms()
-    {
-        // 校验：如果还没生成地牢，先提示
         if (allRoomData.Count == 0)
-        {
-            Debug.LogWarning("请先生成地牢，再放置物品/敌人！");
             return;
-        }
 
-        // 清空场景中已生成的物品/敌人
-        ClearExistingSpawnedObjects();
+        foreach (var room in allRoomData)
+            room.roomType = RoomData.RoomType.Monster;
 
-        // 遍历每个房间，生成物品/敌人
-        foreach (var roomData in allRoomData)
+        RoomData bestRoomA = null;
+        RoomData bestRoomB = null;
+        int maxDistance = -1;
+
+        // ⭐ 对每个节点跑 BFS
+        foreach (var room in allRoomData)
         {
-            foreach (var spawnable in spawnableObjects)
-            {
-                // 根据概率判断是否生成
-                if (Random.value > spawnable.spawnChance)
-                    continue;
+            Dictionary<RoomData, int> distances = BFSCalculateDistances(room);
 
-                // 计算要生成的数量
-                int spawnCount = Random.Range(spawnable.spawnCountPerRoom.x, spawnable.spawnCountPerRoom.y + 1);
-                
-                // 生成指定数量的物体
-                for (int j = 0; j < spawnCount; j++)
+            foreach (var kvp in distances)
+            {
+                if (kvp.Value > maxDistance)
                 {
-                    SpawnSingleObjectInRoom(roomData.floorPositions, roomData.roomBounds, spawnable);
+                    maxDistance = kvp.Value;
+                    bestRoomA = room;
+                    bestRoomB = kvp.Key;
                 }
             }
         }
 
-        Debug.Log($"已在 {allRoomData.Count} 个房间内放置物品/敌人完成！");
+        if (bestRoomA != null)
+            bestRoomA.roomType = RoomData.RoomType.Spawn;
+
+        if (bestRoomB != null && bestRoomB != bestRoomA && allRoomData.Count >= minRoomsForBoss)
+            bestRoomB.roomType = RoomData.RoomType.Boss;
+
+        // 剩余按权重分配
+        int totalWeight = monsterRoomWeight + rewardRoomWeight;
+
+        foreach (var room in allRoomData)
+        {
+            if (room.roomType != RoomData.RoomType.Monster)
+                continue;
+
+            room.roomType = Random.Range(0, totalWeight) < monsterRoomWeight
+                ? RoomData.RoomType.Monster
+                : RoomData.RoomType.Reward;
+        }
+
+        Debug.Log($"✅ Spawn: {bestRoomA.center} | Boss: {bestRoomB.center} | 最大最短距离: {maxDistance}");
+    }
+    
+    private RoomData GetRoomByCenter(Vector2Int center)
+    {
+        return allRoomData.Find(r => r.center == center);
     }
 
-    // 在单个房间内生成单个物体（确保只在房间内）
-    private void SpawnSingleObjectInRoom(HashSet<Vector2Int> roomPositions, BoundsInt roomBounds, SpawnableObject spawnable)
+
+// 计算两个房间之间的最短距离
+private int GetShortestDistance(RoomData roomA, RoomData roomB)
+{
+    // 使用 BFS 计算最短路径
+    Dictionary<RoomData, int> distances = BFSCalculateDistances(roomA);
+    return distances.ContainsKey(roomB) ? distances[roomB] : int.MaxValue;
+}
+
+// 找到最大最短距离的房间对
+    private (RoomData, RoomData) FindLongestShortestPathEnds()
     {
-        if (spawnable.prefab == null)
+        if (allRoomData.Count == 0) return (null, null);
+
+        // 从任意房间开始，找到第一个最远房间
+        RoomData startRoom = allRoomData[0];
+        RoomData farthestRoomA = BFSFindFarthestRoom(startRoom);
+
+        // 从房间A开始，找到最远的房间B
+        RoomData farthestRoomB = BFSFindFarthestRoom(farthestRoomA);
+
+        Debug.Log($"✅ 最长的最短路径：{farthestRoomA.center} <-> {farthestRoomB.center}");
+
+        return (farthestRoomA, farthestRoomB);
+    }
+
+    private RoomData BFSFindFarthestRoom(RoomData startRoom)
+    {
+        Dictionary<RoomData, int> distances = BFSCalculateDistances(startRoom);
+        return GetFarthestRoom(distances);
+    }
+
+    private void LogRoomDistribution()
+    {
+        int bossCount = allRoomData.Count(r => r.roomType == RoomData.RoomType.Boss);
+        int monsterCount = allRoomData.Count(r => r.roomType == RoomData.RoomType.Monster);
+        int rewardCount = allRoomData.Count(r => r.roomType == RoomData.RoomType.Reward); 
+
+        Debug.Log($"✅ 房间分配完成：出生房x1 | Boss房x{bossCount} | 怪物房x{monsterCount} | 奖励房x{rewardCount}");
+    }
+
+    private bool IsValidPosition(Vector2Int position)
+    {
+        return position.x >= startPosition.x && position.x < startPosition.x + dungeonWidth &&
+               position.y >= startPosition.y && position.y < startPosition.y + dungeonHeight;
+    }
+
+    private (RoomData, RoomData) FindFarthestRoomPairInGraph()
+    {
+        if (allRoomData.Count == 0) return (null, null);
+        if (allRoomData.Count == 1) return (allRoomData[0], null);
+
+        RoomData startRoom = allRoomData[0];
+        Dictionary<RoomData, int> distancesFromStart = BFSCalculateDistances(startRoom);
+        RoomData farthestRoomA = GetFarthestRoom(distancesFromStart);
+
+        Dictionary<RoomData, int> distancesFromA = BFSCalculateDistances(farthestRoomA);
+        RoomData farthestRoomB = GetFarthestRoom(distancesFromA);
+
+        int maxDistance = distancesFromA[farthestRoomB];
+        Debug.Log($"✅ 最远房间对：{farthestRoomA.center} <-> {farthestRoomB.center} | 距离={maxDistance}");
+
+        return (farthestRoomA, farthestRoomB);
+    }
+
+    private Dictionary<RoomData, int> BFSCalculateDistances(RoomData startRoom)
+    {
+        Dictionary<RoomData, int> distances = new Dictionary<RoomData, int>();
+        Queue<RoomData> queue = new Queue<RoomData>();
+
+        foreach (var room in allRoomData)
         {
-            Debug.LogWarning("生成物预制体未配置！");
+            distances[room] = -1; // 未访问
+        }
+
+        distances[startRoom] = 0;
+        queue.Enqueue(startRoom);
+
+        while (queue.Count > 0)
+        {
+            RoomData currentRoom = queue.Dequeue();
+            foreach (var neighbor in roomConnections[currentRoom])
+            {
+                if (distances[neighbor] == -1)
+                {
+                    distances[neighbor] = distances[currentRoom] + 1; // 距离+1
+                    queue.Enqueue(neighbor);
+                }
+            }
+        }
+
+        return distances;
+    }
+
+    private RoomData GetFarthestRoom(Dictionary<RoomData, int> distances)
+    {
+        RoomData farthestRoom = null;
+        int maxDistance = -1;
+
+        foreach (var kvp in distances)
+        {
+            if (kvp.Value > maxDistance)
+            {
+                maxDistance = kvp.Value;
+                farthestRoom = kvp.Key;
+            }
+        }
+
+        return farthestRoom;
+    }
+
+  
+
+    private void MovePlayerToSpawnRoomCenter()
+    {
+        if (player == null)
+        {
+            Debug.LogWarning("⚠️ 请在Inspector中拖入场景内的Player对象！");
             return;
         }
 
-        Vector2Int spawnPosition = Vector2Int.zero;
+        RoomData spawnRoom = allRoomData.Find(r => r.roomType == RoomData.RoomType.Spawn);
+        if (spawnRoom == null) return;
+
+        Vector3 centerPos = new Vector3(
+            spawnRoom.center.x + 0.5f,
+            spawnRoom.center.y + 0.5f,
+            0
+        );
+
+        player.transform.position = centerPos;
+    }
+
+    private void CalculateRoomBorder(RoomData roomData)
+    {
+        BoundsInt bounds = roomData.roomBounds;
+        for (int x = bounds.min.x; x < bounds.max.x; x++)
+            roomData.borderPositions.Add(new Vector2Int(x, bounds.max.y - 1));
+        for (int x = bounds.min.x; x < bounds.max.x; x++)
+            roomData.borderPositions.Add(new Vector2Int(x, bounds.min.y));
+        for (int y = bounds.min.y; y < bounds.max.y; y++)
+            roomData.borderPositions.Add(new Vector2Int(bounds.min.x, y));
+        for (int y = bounds.min.y; y < bounds.max.y; y++)
+            roomData.borderPositions.Add(new Vector2Int(bounds.max.x - 1, y));
+    }
+
+    [ContextMenu("📌 手动放置物品和敌人")]
+    public void SpawnObjectsInRooms()
+    {
+        if (allRoomData.Count == 0)
+        {
+            Debug.LogWarning("⚠️ 请先生成地牢，再放置物品/敌人！");
+            return;
+        }
+
+        ClearExistingSpawnedObjects();
+
+        foreach (var room in allRoomData)
+        {
+            foreach (var spawnable in spawnableObjects)
+            {
+                if (!IsSpawnAllowedForRoomType(room, spawnable)) continue;
+                if (Random.value > spawnable.spawnChance) continue;
+
+                int spawnCount = Random.Range(spawnable.spawnCountPerRoom.x, spawnable.spawnCountPerRoom.y + 1);
+                for (int i = 0; i < spawnCount; i++)
+                {
+                    SpawnSingleObject(room.floorPositions, room.roomBounds, spawnable);
+                }
+            }
+        }
+
+        Debug.Log($"✅ 物品/敌人生成完成！");
+    }
+
+    private bool IsSpawnAllowedForRoomType(RoomData room, SpawnableObject spawnable)
+    {
+        if (spawnable.prefab == null) return false;
+        
+        switch (room.roomType)
+        {
+            case RoomData.RoomType.Spawn:
+                return false; // 出生房不生成任何东西
+            case RoomData.RoomType.Boss:
+                return spawnable.prefab.name.Contains("Boss"); // Boss房只生成Boss
+            case RoomData.RoomType.Reward:
+                return spawnable.prefab.name.Contains("Item") || spawnable.prefab.name.Contains("Reward"); // 奖励房只生成道具
+            case RoomData.RoomType.Monster:
+                return !spawnable.prefab.name.Contains("Boss") && !spawnable.prefab.name.Contains("Item") && !spawnable.prefab.name.Contains("Reward"); // 怪物房只生成普通怪
+            default:
+                return true;
+        }
+    }
+
+    private void SpawnSingleObject(HashSet<Vector2Int> roomPositions, BoundsInt roomBounds, SpawnableObject spawnable)
+    {
         List<Vector2Int> availablePositions = new List<Vector2Int>(roomPositions);
 
-        // 如果设置为只在中心区域生成，过滤出中心区域的位置
         if (spawnable.spawnInCenterOnly)
         {
-            availablePositions = FilterCenterRoomPositions(roomPositions, roomBounds, spawnable.centerOffset);
+            availablePositions = FilterCenterPositions(roomPositions, roomBounds, spawnable.centerOffset);
         }
 
-        // 随机选择一个可用位置
-        if (availablePositions.Count > 0)
-        {
-            spawnPosition = availablePositions[Random.Range(0, availablePositions.Count)];
-        }
-        else
-        {
-            Debug.LogWarning("房间内无可用生成位置！");
-            return;
-        }
+        if (availablePositions.Count == 0) return;
 
-        // 转换为世界坐标（+0.5对齐Tile中心）
-        Vector3 worldPosition = new Vector3(spawnPosition.x + 0.5f, spawnPosition.y + 0.5f, 0);
-        
-        // 生成物体
-        GameObject spawnedObject = Instantiate(spawnable.prefab, worldPosition, Quaternion.identity);
-        // 设置父节点
+        Vector2Int spawnPos = availablePositions[Random.Range(0, availablePositions.Count)];
+        Vector3 worldPos = new Vector3(spawnPos.x + 0.5f, spawnPos.y + 0.5f, 0);
+
+        GameObject spawnedObj = Instantiate(spawnable.prefab, worldPos, Quaternion.identity);
         if (spawnedObjectsParent != null)
         {
-            spawnedObject.transform.SetParent(spawnedObjectsParent);
+            spawnedObj.transform.SetParent(spawnedObjectsParent);
         }
     }
 
-    // 过滤房间中心区域的位置（避免贴墙）
-    private List<Vector2Int> FilterCenterRoomPositions(HashSet<Vector2Int> roomPositions, BoundsInt roomBounds, int centerOffset)
+    private List<Vector2Int> FilterCenterPositions(HashSet<Vector2Int> positions, BoundsInt bounds, int offset)
     {
         List<Vector2Int> centerPositions = new List<Vector2Int>();
-        
-        // 计算中心区域的范围
-        int minX = roomBounds.min.x + centerOffset;
-        int maxX = roomBounds.max.x - centerOffset;
-        int minY = roomBounds.min.y + centerOffset;
-        int maxY = roomBounds.max.y - centerOffset;
+        int minX = bounds.min.x + offset;
+        int maxX = bounds.max.x - offset;
+        int minY = bounds.min.y + offset;
+        int maxY = bounds.max.y - offset;
 
-        // 只从房间实际位置中筛选
-        foreach (var pos in roomPositions)
+        foreach (var pos in positions)
         {
             if (pos.x >= minX && pos.x < maxX && pos.y >= minY && pos.y < maxY)
             {
@@ -220,75 +378,80 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
             }
         }
 
-        // 容错：中心区域无位置则用整个房间
-        if (centerPositions.Count == 0)
-        {
-            centerPositions = new List<Vector2Int>(roomPositions);
-        }
-
-        return centerPositions;
+        return centerPositions.Count > 0 ? centerPositions : new List<Vector2Int>(positions);
     }
 
-    // 清空已生成的物品/敌人
     private void ClearExistingSpawnedObjects()
     {
-        // 通过父节点清理（更安全，不依赖标签）
         if (spawnedObjectsParent != null)
         {
-            // 反向遍历删除所有子物体（避免索引错乱）
             for (int i = spawnedObjectsParent.childCount - 1; i >= 0; i--)
             {
-                Transform child = spawnedObjectsParent.GetChild(i);
-                DestroyImmediate(child.gameObject);
+                DestroyImmediate(spawnedObjectsParent.GetChild(i).gameObject);
             }
-            // 如果你不想删除父节点本身，注释掉下面这行；如果需要重建父节点，保留逻辑
-            // DestroyImmediate(spawnedObjectsParent.gameObject);
-            return;
         }
     }
 
     private HashSet<Vector2Int> ConnectRooms(List<Vector2Int> roomCenters)
     {
         HashSet<Vector2Int> corridors = new HashSet<Vector2Int>();
-        var currentRoomCenter = roomCenters[Random.Range(0, roomCenters.Count)];
-        roomCenters.Remove(currentRoomCenter);
+
+        if (roomCenters.Count == 0)
+            return corridors;
+
+        Vector2Int currentCenter = roomCenters[Random.Range(0, roomCenters.Count)];
+        roomCenters.Remove(currentCenter);
 
         while (roomCenters.Count > 0)
         {
-            Vector2Int closest = FindClosestPointTo(currentRoomCenter, roomCenters);
-            roomCenters.Remove(closest);
-            HashSet<Vector2Int> newCorridor = CreateCorridor(currentRoomCenter, closest);
-            currentRoomCenter = closest;
+            Vector2Int closestCenter = FindClosestRoomCenter(currentCenter, roomCenters);
+            roomCenters.Remove(closestCenter);
+
+            // ⭐ 在这里构建真实图连接关系
+            RoomData roomA = GetRoomByCenter(currentCenter);
+            RoomData roomB = GetRoomByCenter(closestCenter);
+
+            if (roomA != null && roomB != null)
+            {
+                roomConnections[roomA].Add(roomB);
+                roomConnections[roomB].Add(roomA);
+            }
+
+            HashSet<Vector2Int> newCorridor = CreateCorridor(currentCenter, closestCenter);
             corridors.UnionWith(newCorridor);
+
+            currentCenter = closestCenter;
         }
+
         return corridors;
     }
 
-    private HashSet<Vector2Int> CreateCorridor(Vector2Int currentRoomCenter, Vector2Int destination)
+    private HashSet<Vector2Int> CreateCorridor(Vector2Int start, Vector2Int end)
     {
         HashSet<Vector2Int> corridor = new HashSet<Vector2Int>();
-        var position = currentRoomCenter;
-        AddCorridorWidth(corridor, position, corridorWidth);
+        Vector2Int currentPos = start;
+        AddCorridorWidth(corridor, currentPos, corridorWidth);
 
-        while (position.y != destination.y)
+        while (currentPos.y != end.y)
         {
-            position += destination.y > position.y ? Vector2Int.up : Vector2Int.down;
-            AddCorridorWidth(corridor, position, corridorWidth);
+            currentPos += currentPos.y < end.y ? Vector2Int.up : Vector2Int.down;
+            AddCorridorWidth(corridor, currentPos, corridorWidth);
         }
 
-        while (position.x != destination.x)
+        while (currentPos.x != end.x)
         {
-            position += destination.x > position.x ? Vector2Int.right : Vector2Int.left;
-            AddCorridorWidth(corridor, position, corridorWidth);
+            currentPos += currentPos.x < end.x ? Vector2Int.right : Vector2Int.left;
+            AddCorridorWidth(corridor, currentPos, corridorWidth);
         }
+
         return corridor;
     }
 
-    private void AddCorridorWidth(HashSet<Vector2Int> corridor, Vector2Int centerPos, int width)
+    private void AddCorridorWidth(HashSet<Vector2Int> corridor, Vector2Int center, int width)
     {
         if (width <= 1)
         {
-            corridor.Add(centerPos);
+            corridor.Add(center);
             return;
         }
 
@@ -296,26 +459,31 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
         {
             for (int y = -width / 2; y <= width / 2; y++)
             {
-                Vector2Int newPos = centerPos + new Vector2Int(x, y);
-                corridor.Add(newPos);
+                corridor.Add(center + new Vector2Int(x, y));
             }
         }
     }
 
-    private Vector2Int FindClosestPointTo(Vector2Int currentRoomCenter, List<Vector2Int> roomCenters)
+    private Vector2Int FindClosestRoomCenter(Vector2Int from, List<Vector2Int> centers)
     {
         Vector2Int closest = Vector2Int.zero;
-        float distance = float.MaxValue;
-        foreach (var position in roomCenters)
+        float minDistance = float.MaxValue;
+
+        foreach (var center in centers)
         {
-            float currentDistance = Vector2.Distance(position, currentRoomCenter);
-            if (currentDistance < distance)
+            float distance = Vector2.Distance(from, center);
+            if (distance < minDistance)
             {
-                distance = currentDistance;
-                closest = position;
+                minDistance = distance;
+                closest = center;
             }
         }
+
         return closest;
     }
-    
+
+    public RoomData GetRoomByType(RoomData.RoomType type)
+    {
+        return allRoomData.Find(r => r.roomType == type);
+    }
 }
