@@ -35,6 +35,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     {
         // 清空历史数据
         allRoomData.Clear();
+        ClearExistingSpawnedObjects();
         
         // 1. 二进制空间分割生成房间边界
         var generatedRooms = ProceduralGenerationAlgorithms.BinarySpacePartitioning(
@@ -234,15 +235,18 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
         // 通过父节点清理（更安全，不依赖标签）
         if (spawnedObjectsParent != null)
         {
-            foreach (Transform child in spawnedObjectsParent)
+            // 反向遍历删除所有子物体（避免索引错乱）
+            for (int i = spawnedObjectsParent.childCount - 1; i >= 0; i--)
             {
+                Transform child = spawnedObjectsParent.GetChild(i);
                 DestroyImmediate(child.gameObject);
             }
+            // 如果你不想删除父节点本身，注释掉下面这行；如果需要重建父节点，保留逻辑
+            // DestroyImmediate(spawnedObjectsParent.gameObject);
             return;
         }
     }
 
-    // 原有走廊相关方法（保持不变）
     private HashSet<Vector2Int> ConnectRooms(List<Vector2Int> roomCenters)
     {
         HashSet<Vector2Int> corridors = new HashSet<Vector2Int>();
@@ -313,25 +317,5 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
         }
         return closest;
     }
-
-    // 保留：根据玩家位置找房间（后续加屏障直接用）
-    public RoomData GetRoomByPlayerPosition(Vector2 playerWorldPos)
-    {
-        // 转换玩家世界坐标为格子坐标
-        Vector2Int playerGridPos = new Vector2Int(
-            Mathf.FloorToInt(playerWorldPos.x),
-            Mathf.FloorToInt(playerWorldPos.y)
-        );
-
-        // 遍历所有房间，判断玩家是否在房间内
-        foreach (var roomData in allRoomData)
-        {
-            if (roomData.floorPositions.Contains(playerGridPos))
-            {
-                return roomData;
-            }
-        }
-
-        return null; // 玩家不在任何房间内
-    }
+    
 }
