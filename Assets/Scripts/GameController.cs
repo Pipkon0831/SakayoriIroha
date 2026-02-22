@@ -1,10 +1,10 @@
 using UnityEngine;
-using System.Collections; // 仅新增这一行，解决协程/IEnumerator报错
+using System.Collections;
+using System.Collections.Generic; // 新增：用于存储怪物引用
 
 public class GameController : MonoBehaviour
 {
     [SerializeField] private RoomFirstDungeonGenerator dungeonGenerator;
-    
     [SerializeField] private bool autoGenerateOnStart = true;
 
     [Header("战斗状态配置")]
@@ -18,6 +18,11 @@ public class GameController : MonoBehaviour
     // 房间检测相关
     private RoomData currentPlayerRoom; // 记录玩家当前所在房间
     private bool isWaitingToRegen = false; // 防止重复触发重生
+    
+    // 新增：怪物检测相关
+    [Header("怪物检测配置")]
+    [SerializeField] private string enemyTag = "Enemy"; // 敌人标签（需和Enemy预制体标签一致）
+    private List<GameObject> currentRoomEnemies = new List<GameObject>(); // 当前房间的怪物列表
 
     private void Start()
     {
@@ -31,10 +36,11 @@ public class GameController : MonoBehaviour
 
     private void Update()
     {
-        if (IsInCombat && Input.GetKeyDown(KeyCode.Escape) && !UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+        // 移除Esc退出战斗的代码
+        // 新增：战斗中实时检测怪物数量
+        if (IsInCombat && currentPlayerRoom != null)
         {
-            GUIUtility.hotControl = 0;
-            ExitCombatState();
+            CheckCurrentRoomEnemies();
         }
 
         CheckPlayerRoomChange();
@@ -49,12 +55,12 @@ public class GameController : MonoBehaviour
         }
 
         dungeonGenerator.GenerateDungeon();
-        
         dungeonGenerator.SpawnObjectsInRooms();
         
         // 重置状态
         currentPlayerRoom = null;
         isWaitingToRegen = false;
+        currentRoomEnemies.Clear(); // 清空怪物列表
         
         Debug.Log("GameController: 地牢生成和物品放置完成！");
     }
@@ -96,7 +102,9 @@ public class GameController : MonoBehaviour
     {
         Debug.Log($"【玩家进入房间】类型：{room.roomType} | 房间中心：{room.center}");
 
-        // 仅移除Reward引用，不修改外部枚举，保留原有已定义的类型逻辑
+        // 清空上一个房间的怪物列表
+        currentRoomEnemies.Clear();
+
         switch (room.roomType)
         {
             case RoomData.RoomType.Monster:
@@ -104,12 +112,56 @@ public class GameController : MonoBehaviour
                 if (!room.isCleared)
                 {
                     EnterCombatState(room.roomType);
+                    // 进入房间时立即收集怪物列表
+                    CollectCurrentRoomEnemies();
                 }
                 break;
             case RoomData.RoomType.Spawn:
-                // 完全移除Reward分支，避免引用未定义的枚举
                 ExitCombatState();
                 break;
+        }
+    }
+
+    /// <summary>
+    /// 收集当前房间内的所有怪物
+    /// </summary>
+    private void CollectCurrentRoomEnemies()
+    {
+        if (currentPlayerRoom == null) return;
+
+        currentRoomEnemies.Clear();
+        
+        // 方式1：通过标签查找场景中所有敌人，再筛选是否在当前房间内（推荐）
+        GameObject[] allEnemies = GameObject.FindGameObjectsWithTag(enemyTag);
+        foreach (var enemy in allEnemies)
+        {
+            Vector2Int enemyGridPos = new Vector2Int(
+                Mathf.FloorToInt(enemy.transform.position.x),
+                Mathf.FloorToInt(enemy.transform.position.y)
+            );
+
+            // 检测敌人是否在当前房间的地板范围内
+            if (currentPlayerRoom.floorPositions.Contains(enemyGridPos))
+            {
+                currentRoomEnemies.Add(enemy);
+            }
+        }
+
+        Debug.Log($"【收集房间怪物】当前{currentPlayerRoom.roomType}房间内共有{currentRoomEnemies.Count}个怪物");
+    }
+
+    /// <summary>
+    /// 实时检测当前房间的怪物数量
+    /// </summary>
+    private void CheckCurrentRoomEnemies()
+    {
+        // 清理已销毁的怪物引用
+        currentRoomEnemies.RemoveAll(enemy => enemy == null);
+
+        // 如果怪物数量为0，自动退出战斗状态
+        if (currentRoomEnemies.Count == 0)
+        {
+            ExitCombatState();
         }
     }
 
@@ -120,7 +172,7 @@ public class GameController : MonoBehaviour
     
         IsInCombat = true;
     
-        Debug.Log($"【进入战斗状态】房间类型：{roomType} | 按Esc键脱战");
+        Debug.Log($"【进入战斗状态】房间类型：{roomType} | 需击败所有怪物才能脱战");
     }
 
     public void ExitCombatState()
@@ -149,7 +201,7 @@ public class GameController : MonoBehaviour
             }
         }
 
-        Debug.Log("【退出战斗状态】回到脱战模式");
+        Debug.Log("【退出战斗状态】所有怪物已击败，回到脱战模式");
 
         // 如果是Boss房通关且开启了自动重生，则延迟重生地牢
         if (isBossRoomCleared && autoRegenAfterBoss && !isWaitingToRegen)
@@ -178,7 +230,7 @@ public class GameController : MonoBehaviour
             RoomData spawnRoom = dungeonGenerator.allRoomData.Find(r => r.roomType == RoomData.RoomType.Spawn);
             if (spawnRoom != null)
             {
-                player.transform.position = new Vector3(spawnRoom.center.x, spawnRoom.center.y, player.transform.position.z);
+                player.transform.position = new Vector3(spawnRoom.center.x + 0.5f, spawnRoom.center.y + 0.5f, player.transform.position.z);
                 Debug.Log($"【玩家重置位置】移动到新出生房中心：{spawnRoom.center}");
             }
         }
@@ -209,5 +261,15 @@ public class GameController : MonoBehaviour
     public RoomData GetCurrentPlayerRoom()
     {
         return currentPlayerRoom;
+    }
+
+    // 新增：供Enemy脚本调用，主动通知怪物死亡（可选，优化检测效率）
+    public void NotifyEnemyDeath(GameObject enemy)
+    {
+        if (currentRoomEnemies.Contains(enemy))
+        {
+            currentRoomEnemies.Remove(enemy);
+            Debug.Log($"【怪物死亡】当前房间剩余怪物数量：{currentRoomEnemies.Count}");
+        }
     }
 }

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class CameraFollow2D : MonoBehaviour
+public class CameraController : MonoBehaviour
 {
     [Header("基础跟随设置")]
     public Transform target;          // 跟随的目标对象

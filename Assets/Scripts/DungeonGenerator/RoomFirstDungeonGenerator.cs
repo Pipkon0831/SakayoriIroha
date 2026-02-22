@@ -1,9 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq; // 添加这一行
+using System.Linq;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
+[Serializable]
+public class RoomSpawnConfig
+{
+    public RoomData.RoomType roomType; // 房间类型（Spawn/Monster/Boss/Reward）
+    public List<SpawnableObject> spawnableObjects; // 该房间可生成的物体列表（复用你的类）
+}
 
 public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
 {
@@ -12,10 +18,10 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     [SerializeField] [Range(0, 10)] private int offset = 1;
     [SerializeField] private int corridorWidth = 2;
 
-    [Header("物品/敌人生成配置")]
-    [SerializeField] private List<SpawnableObject> spawnableObjects;
+    [Header("按房间类型配置生成规则")]
+    [SerializeField] private List<RoomSpawnConfig> roomSpawnConfigs; // 4种房间的生成配置
 
-    [Header("房间类型配置")]
+    [Header("房间类型权重（仅怪物/奖励房）")]
     [SerializeField] private int monsterRoomWeight = 70;
     [SerializeField] private int rewardRoomWeight = 20;
     [SerializeField] private int minRoomsForBoss = 5;
@@ -75,17 +81,17 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
                 allRoomData.Add(roomData);
         }
 
-        // ⭐ 初始化真实图结构
+        // 初始化真实图结构
         roomConnections = new Dictionary<RoomData, List<RoomData>>();
         foreach (var room in allRoomData)
             roomConnections[room] = new List<RoomData>();
 
-        // ⭐ 先生成真实走廊 + 构建图
+        // 先生成真实走廊 + 构建图
         List<Vector2Int> roomCenters = new List<Vector2Int>(allRoomData.ConvertAll(r => r.center));
         HashSet<Vector2Int> corridors = ConnectRooms(roomCenters);
         floor.UnionWith(corridors);
 
-        // ⭐ 再根据真实图分配房间类型
+        // 再根据真实图分配房间类型
         AssignRoomTypes();
 
         tilemapVisualizer.PaintFloorTiles(floor);
@@ -104,7 +110,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
         RoomData bestRoomB = null;
         int maxDistance = -1;
 
-        // ⭐ 对每个节点跑 BFS
+        // 对每个节点跑 BFS
         foreach (var room in allRoomData)
         {
             Dictionary<RoomData, int> distances = BFSCalculateDistances(room);
@@ -146,7 +152,6 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     {
         return allRoomData.Find(r => r.center == center);
     }
-
 
     private RoomData BFSFindFarthestRoom(RoomData startRoom)
     {
@@ -206,8 +211,6 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
         return farthestRoom;
     }
 
-  
-
     private void MovePlayerToSpawnRoomCenter()
     {
         if (player == null)
@@ -252,13 +255,24 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
 
         ClearExistingSpawnedObjects();
 
+        // 遍历所有房间
         foreach (var room in allRoomData)
         {
-            foreach (var spawnable in spawnableObjects)
+            // 找到该房间类型对应的生成配置
+            RoomSpawnConfig config = roomSpawnConfigs.Find(c => c.roomType == room.roomType);
+            if (config == null || config.spawnableObjects == null || config.spawnableObjects.Count == 0)
             {
-                if (!IsSpawnAllowedForRoomType(room, spawnable)) continue;
-                if (Random.value > spawnable.spawnChance) continue;
+                Debug.Log($"📌 房间类型 {room.roomType} 无生成配置，跳过");
+                continue;
+            }
 
+            // 遍历该房间可生成的物体列表（复用你的SpawnableObject配置）
+            foreach (var spawnable in config.spawnableObjects)
+            {
+                if (spawnable.prefab == null) continue;
+                if (Random.value > spawnable.spawnChance) continue; // 概率判断
+
+                // 生成数量（使用你配置的spawnCountPerRoom）
                 int spawnCount = Random.Range(spawnable.spawnCountPerRoom.x, spawnable.spawnCountPerRoom.y + 1);
                 for (int i = 0; i < spawnCount; i++)
                 {
@@ -270,29 +284,11 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
         Debug.Log($"✅ 物品/敌人生成完成！");
     }
 
-    private bool IsSpawnAllowedForRoomType(RoomData room, SpawnableObject spawnable)
-    {
-        if (spawnable.prefab == null) return false;
-        
-        switch (room.roomType)
-        {
-            case RoomData.RoomType.Spawn:
-                return false; // 出生房不生成任何东西
-            case RoomData.RoomType.Boss:
-                return spawnable.prefab.name.Contains("Boss"); // Boss房只生成Boss
-            case RoomData.RoomType.Reward:
-                return spawnable.prefab.name.Contains("Item") || spawnable.prefab.name.Contains("Reward"); // 奖励房只生成道具
-            case RoomData.RoomType.Monster:
-                return !spawnable.prefab.name.Contains("Boss") && !spawnable.prefab.name.Contains("Item") && !spawnable.prefab.name.Contains("Reward"); // 怪物房只生成普通怪
-            default:
-                return true;
-        }
-    }
-
     private void SpawnSingleObject(HashSet<Vector2Int> roomPositions, BoundsInt roomBounds, SpawnableObject spawnable)
     {
         List<Vector2Int> availablePositions = new List<Vector2Int>(roomPositions);
 
+        // 只在中心生成（使用你配置的spawnInCenterOnly和centerOffset）
         if (spawnable.spawnInCenterOnly)
         {
             availablePositions = FilterCenterPositions(roomPositions, roomBounds, spawnable.centerOffset);
@@ -355,7 +351,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
             Vector2Int closestCenter = FindClosestRoomCenter(currentCenter, roomCenters);
             roomCenters.Remove(closestCenter);
 
-            // ⭐ 在这里构建真实图连接关系
+            // 构建真实图连接关系
             RoomData roomA = GetRoomByCenter(currentCenter);
             RoomData roomB = GetRoomByCenter(closestCenter);
 

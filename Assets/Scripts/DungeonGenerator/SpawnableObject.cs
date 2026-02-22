@@ -1,5 +1,6 @@
 using UnityEngine;
 
+// 保留你现有的SpawnableObject（无需修改）
 [System.Serializable]
 public class SpawnableObject
 {
