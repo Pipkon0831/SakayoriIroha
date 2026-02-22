@@ -78261,11 +78261,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 917677424625187379, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 20.5
+      value: 20.495
       objectReference: {fileID: 0}
     - target: {fileID: 917677424625187379, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 33.5
+      value: 33.184
       objectReference: {fileID: 0}
     - target: {fileID: 917677424625187379, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
       propertyPath: m_LocalPosition.z
@@ -78304,20 +78304,8 @@ PrefabInstance:
       value: Player
       objectReference: {fileID: 0}
     - target: {fileID: 917677424625187389, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
-      propertyPath: moveSpeed
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: 917677424625187389, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
       propertyPath: gameController
       value: 
       objectReference: {fileID: 1242324986}
-    - target: {fileID: 917677424625187390, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
-      propertyPath: m_BodyType
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 917677424625187390, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
-      propertyPath: m_GravityScale
-      value: 0
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 0733c61dd83e67546b157fd38ce59a43, type: 3}
