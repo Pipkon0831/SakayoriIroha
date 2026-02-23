@@ -27,12 +27,16 @@ public class GameController : MonoBehaviour
     private List<GameObject> currentRoomEnemies = new List<GameObject>();
 
     private bool isGameOver = false;
+    
+    public int CurrentFloorIndex { get; private set; } = 0;
+    
+    public FloorModifierData CurrentFloorModifier { get; private set; }
 
     private void Start()
     {
         if (autoGenerateOnStart)
         {
-            GenerateGameDungeon();
+            StartNewFloor();
         }
 
         IsInCombat = false;
@@ -53,6 +57,23 @@ public class GameController : MonoBehaviour
 
         CheckPlayerRoomChange();
     }
+    
+    public void StartNewFloor()
+    {
+        CurrentFloorIndex++;
+
+        Debug.Log($"进入第 {CurrentFloorIndex} 层");
+
+        CurrentFloorModifier = new FloorModifierData();
+
+        if (LayerEventSystem.Instance != null)
+            LayerEventSystem.Instance.OnNewFloorStart();
+        
+        if (LLMEventBridge.Instance != null)
+            LLMEventBridge.Instance.SimulateLLMDecision();
+
+        GenerateGameDungeon();
+    }
 
     public void GenerateGameDungeon()
     {
@@ -70,6 +91,19 @@ public class GameController : MonoBehaviour
         currentRoomEnemies.Clear();
 
         Debug.Log("地牢生成完成！");
+    }
+    
+    private void ApplyFloorModifier()
+    {
+        if (CurrentFloorModifier == null) return;
+
+        Debug.Log("应用本层规则数据");
+
+        // 未来可扩展：
+        // - 视野限制
+        // - 怪物速度
+        // - 玩家伤害倍率
+        // - Boss连战
     }
 
     [ContextMenu("手动重新生成地牢")]
@@ -185,6 +219,8 @@ public class GameController : MonoBehaviour
 
         if (isBossRoomCleared && autoRegenAfterBoss && !isWaitingToRegen)
         {
+            // 先清空本层事件，再生成下一层
+            LayerEventSystem.Instance.OnFloorEnd();
             StartCoroutine(RegenDungeonAfterDelay());
         }
     }

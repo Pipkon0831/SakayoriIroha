@@ -141,7 +141,14 @@ public class Enemy : MonoBehaviour
     private void ChasePlayer()
     {
         Vector2 dir = (player.transform.position - transform.position).normalized;
-        Vector2 moveDir = dir * moveSpeed;
+        float finalSpeed = moveSpeed;
+
+        if (CombatModifierSystem.Instance != null)
+        {
+            finalSpeed *= CombatModifierSystem.Instance.enemyMoveSpeedMultiplier;
+        }
+
+        Vector2 moveDir = dir * finalSpeed;
 
         moveDir += GetSeparationDirection(); 
         Move(moveDir);
@@ -218,7 +225,14 @@ public class Enemy : MonoBehaviour
         {
             // 新增：调试日志，确认扣血次数和数值
             Debug.Log($"[怪物攻击] 扣血{attackDamage}，玩家当前血量：{player.CurrentHP}");
-            player.TakeDamage(attackDamage);
+            float finalDamage = attackDamage;
+
+            if (CombatModifierSystem.Instance != null)
+            {
+                finalDamage *= CombatModifierSystem.Instance.enemyDamageMultiplier;
+            }
+
+            player.TakeDamage(finalDamage);
             lastAttackTime = Time.fixedTime;
         }
     }
@@ -230,7 +244,6 @@ public class Enemy : MonoBehaviour
         if (isDead) return;
         
         currentHP = Mathf.Max(0, currentHP - damage);
-        Debug.Log($"[怪物受击] 受到{damage}伤害，剩余血量：{currentHP}");
 
         if (currentHP <= 0)
         {

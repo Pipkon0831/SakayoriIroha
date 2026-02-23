@@ -30,7 +30,19 @@ public class PlayerController : MonoBehaviour
     private Vector2 smoothInputVelocity;
     private Vector2 currentVelocity;
     public float CurrentAttack { get; private set; }
-    public float CurrentAttackSpeed { get; private set; }
+    
+    public float CurrentAttackSpeed
+    {
+        get
+        {
+            if (CombatModifierSystem.Instance == null)
+                return baseAttackSpeed;
+
+            return baseAttackSpeed *
+                   CombatModifierSystem.Instance.playerAttackSpeedMultiplier;
+        }
+    }
+    
     public float CurrentExp { get; private set; }
     public float ExpToNextLevel { get; private set; }
     public float MaxHP { get; private set; }
@@ -111,6 +123,11 @@ public class PlayerController : MonoBehaviour
             ref smoothInputVelocity,
             moveSmooth
         );
+        float finalMoveSpeed = CurrentMoveSpeed;
+        if (CombatModifierSystem.Instance != null)
+        {
+            finalMoveSpeed *= CombatModifierSystem.Instance.playerDamageMultiplier; // ❌ 这里不能乱
+        }
         currentVelocity = inputDirection * CurrentMoveSpeed;
     }
 
@@ -167,7 +184,6 @@ public class PlayerController : MonoBehaviour
         
         float upgradeMultiplier = Mathf.Pow(1 + upgradeBonusRate, Level - 1);
         CurrentAttack = baseAttack * upgradeMultiplier;
-        CurrentAttackSpeed = baseAttackSpeed;
         CurrentMoveSpeed = moveSpeed * upgradeMultiplier;
         MaxHP = baseMaxHP * upgradeMultiplier;
         CurrentHP = MaxHP;
@@ -245,8 +261,16 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        CurrentHP = Mathf.Max(0, CurrentHP - damage);
-        Debug.Log($"玩家受到{damage}伤害，剩余血量：{CurrentHP}");
+        float finalDamage = damage;
+
+        if (CombatModifierSystem.Instance != null)
+        {
+            finalDamage *= CombatModifierSystem.Instance.playerReceiveDamageMultiplier;
+        }
+
+        CurrentHP = Mathf.Max(0, CurrentHP - finalDamage);
+        
+        Debug.Log($"玩家受到{finalDamage}伤害，剩余血量：{CurrentHP}");
 
         invincibilityRemaining = invincibilityTime;
 
@@ -320,4 +344,32 @@ public class PlayerController : MonoBehaviour
             }
         }
     }
+    
+    public void AddAttack(float value)
+    {
+        CurrentAttack += value;
+        OnPlayerStatsChanged?.Invoke();
+    }
+
+    public void AddMaxHP(float value, bool healCurrent = true)
+    {
+        MaxHP += value;
+        if (healCurrent)
+            CurrentHP += value;
+
+        OnPlayerStatsChanged?.Invoke();
+    }
+
+    public void HealHP(float value)
+    {
+        CurrentHP = Mathf.Min(CurrentHP + value, MaxHP);
+        OnPlayerStatsChanged?.Invoke();
+    }
+
+    public void TakeDamageDirect(float value)
+    {
+        TakeDamage(value);
+    }
+    
+    
 }
