@@ -2,35 +2,67 @@ using UnityEngine;
 
 public class CameraController : MonoBehaviour
 {
+    // 全局单例（确保任何地方都能调用）
+    public static CameraController Instance;
+
     [Header("基础跟随设置")]
     public Transform target;          // 跟随的目标对象
-    public float smoothTime = 0.2f;   // 平滑跟随的时间
+    public float smoothTime = 0.1f;   // 降低平滑时间，避免抖动被覆盖（关键！）
 
     [Header("鼠标偏移设置")]
     public float mouseOffsetAmount = 2f;  // 鼠标偏移的最大距离
     [Range(0f, 1f)]
     public float mouseSensitivity = 0.8f; // 鼠标偏移的灵敏度
 
+    [Header("相机抖动设置（全局统一）")]
+    public float defaultShakeDuration = 0.5f;   // 默认抖动时长（C键/受伤共用）
+    public float defaultShakeMagnitude = 1.5f;  // 默认抖动幅度（调大，确保明显）
+    public float shakeSmoothFactor = 0.1f;      // 抖动平滑因子
+
+    // 抖动核心变量
     private Vector3 velocity = Vector3.zero;
+    private float currentShakeTime;      
+    private Vector3 shakeOffset; 
+    private float currentShakeMagnitude; // 当前单次抖动的幅度（统一用这个）
+
+    private void Awake()
+    {
+        // 单例初始化（确保全局唯一）
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
+    }
 
     void LateUpdate()
     {
-        if (target == null) return;
+        if (target == null) 
+        {
+            Debug.LogWarning("CameraController: 未设置跟随目标target！");
+            return;
+        }
 
-        // 1. 计算基础目标位置（跟随目标）
+        // 1. 计算基础跟随位置
         Vector3 baseTargetPosition = new Vector3(
             target.position.x,
             target.position.y,
             transform.position.z
         );
 
-        // 2. 计算鼠标偏移量
+        // 2. 计算鼠标偏移
         Vector3 mouseOffset = CalculateMouseOffset();
 
-        // 3. 合并基础位置和鼠标偏移
+        // 3. 合并基础位置 + 鼠标偏移
         Vector3 finalTargetPosition = baseTargetPosition + mouseOffset;
 
-        // 4. 平滑移动相机到最终目标位置
+        finalTargetPosition += shakeOffset;
+
+        // 5. 平滑移动相机（smoothTime调小，避免抖动被平滑掉）
         transform.position = Vector3.SmoothDamp(
             transform.position,
             finalTargetPosition,
@@ -39,27 +71,18 @@ public class CameraController : MonoBehaviour
         );
     }
 
-    /// <summary>
-    /// 计算基于鼠标位置的相机偏移量
-    /// </summary>
     private Vector3 CalculateMouseOffset()
     {
-        // 获取鼠标在屏幕上的位置（像素坐标）
         Vector2 mouseScreenPosition = Input.mousePosition;
-        
-        // 将屏幕坐标转换为归一化坐标（0-1范围）
         float normalizedX = mouseScreenPosition.x / Screen.width;
         float normalizedY = mouseScreenPosition.y / Screen.height;
         
-        // 将0-1范围转换为-0.5到0.5范围（中心点为0）
         float offsetX = (normalizedX - 0.5f) * 2f;
         float offsetY = (normalizedY - 0.5f) * 2f;
         
-        // 应用灵敏度和最大偏移量限制
         offsetX *= mouseSensitivity * mouseOffsetAmount;
         offsetY *= mouseSensitivity * mouseOffsetAmount;
 
-        // 返回最终的偏移向量（Z轴保持0，不影响相机深度）
         return new Vector3(offsetX, offsetY, 0f);
     }
-}
+} 

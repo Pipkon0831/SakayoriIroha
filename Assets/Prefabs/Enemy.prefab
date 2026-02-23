@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 7957980307386680244}
   - component: {fileID: 7119155460497715767}
   - component: {fileID: -7050087685674519605}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Enemy
   m_TagString: Enemy
   m_Icon: {fileID: 0}
@@ -136,5 +136,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 43e2dd53faf74b6987a920c20a06e6de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxHP: 50
+  maxHP: 5
   expReward: 20
+  attackDamage: 10
+  attackCooldown: 1
+  attackCheckRadius: 1.8
+  moveSpeed: 8
+  chaseRange: 30
+  stopRange: 1.2
+  enemySeparation: 1.2
+  idleMoveSpeed: 0.5
+  idleChangeDirTime: 5
+  idleWanderRadius: 5

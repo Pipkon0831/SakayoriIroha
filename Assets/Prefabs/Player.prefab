@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 1165752383}
   - component: {fileID: 1165752385}
   - component: {fileID: 1165752384}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: Pistol
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -113,7 +113,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1226995304}
   - component: {fileID: 1226995305}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: WeaponHolder
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -160,7 +160,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1390847609}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: FirePoint
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -195,9 +195,9 @@ GameObject:
   - component: {fileID: 917677424625187389}
   - component: {fileID: 917677424625187390}
   - component: {fileID: 1975782333}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: Player
-  m_TagString: Untagged
+  m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -285,7 +285,7 @@ MonoBehaviour:
   moveSpeed: 20
   moveSmooth: 0.1
   gameController: {fileID: 0}
-  baseAttack: 100
+  baseAttack: 1
   baseMaxHP: 100
   baseAttackSpeed: 0.5
   upgradeBonusRate: 0.1
