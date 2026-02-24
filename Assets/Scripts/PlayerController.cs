@@ -225,7 +225,6 @@ public class PlayerController : MonoBehaviour
     public void AddExp(float exp)
     {
         CurrentExp += exp;
-        Debug.Log($"获得{exp}经验，当前：{CurrentExp:F0}/{ExpToNextLevel:F0}");
         OnPlayerStatsChanged?.Invoke();
     }
 

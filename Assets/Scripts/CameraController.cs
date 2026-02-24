@@ -21,9 +21,17 @@ public class CameraController : MonoBehaviour
 
     // 抖动核心变量
     private Vector3 velocity = Vector3.zero;
-    private float currentShakeTime;      
-    private Vector3 shakeOffset; 
-    private float currentShakeMagnitude; // 当前单次抖动的幅度（统一用这个）
+    private float currentShakeTime;
+    private Vector3 shakeOffset;
+    private float currentShakeMagnitude;
+
+    [Header("视野缩放（LowVision事件）")]
+    [SerializeField] private Camera targetCamera;      // 不填则自动用 Camera.main 或本物体上的 Camera
+    [SerializeField] private float minOrthoMultiplier = 0.35f; // 防止缩得太小
+    [SerializeField] private float maxOrthoMultiplier = 1.5f;  // 允许略微放大（可选）
+
+    private float defaultOrthoSize = -1f;
+    private float currentOrthoMultiplier = 1f;
 
     private void Awake()
     {
@@ -37,11 +45,27 @@ public class CameraController : MonoBehaviour
             Destroy(gameObject);
             return;
         }
+
+        // ✅ 新增：初始化相机引用与默认size
+        if (targetCamera == null)
+        {
+            targetCamera = GetComponent<Camera>();
+            if (targetCamera == null) targetCamera = Camera.main;
+        }
+
+        if (targetCamera != null)
+        {
+            defaultOrthoSize = targetCamera.orthographicSize;
+        }
+        else
+        {
+            Debug.LogWarning("CameraController: 未找到Camera引用，LowVision缩放将无效。");
+        }
     }
 
     void LateUpdate()
     {
-        if (target == null) 
+        if (target == null)
         {
             Debug.LogWarning("CameraController: 未设置跟随目标target！");
             return;
@@ -60,9 +84,10 @@ public class CameraController : MonoBehaviour
         // 3. 合并基础位置 + 鼠标偏移
         Vector3 finalTargetPosition = baseTargetPosition + mouseOffset;
 
+        // 4. 加上抖动偏移
         finalTargetPosition += shakeOffset;
 
-        // 5. 平滑移动相机（smoothTime调小，避免抖动被平滑掉）
+        // 5. 平滑移动相机
         transform.position = Vector3.SmoothDamp(
             transform.position,
             finalTargetPosition,
@@ -76,13 +101,32 @@ public class CameraController : MonoBehaviour
         Vector2 mouseScreenPosition = Input.mousePosition;
         float normalizedX = mouseScreenPosition.x / Screen.width;
         float normalizedY = mouseScreenPosition.y / Screen.height;
-        
+
         float offsetX = (normalizedX - 0.5f) * 2f;
         float offsetY = (normalizedY - 0.5f) * 2f;
-        
+
         offsetX *= mouseSensitivity * mouseOffsetAmount;
         offsetY *= mouseSensitivity * mouseOffsetAmount;
 
         return new Vector3(offsetX, offsetY, 0f);
     }
-} 
+
+    public void SetOrthoSizeMultiplier(float multiplier)
+    {
+        if (targetCamera == null) return;
+        if (defaultOrthoSize <= 0f) defaultOrthoSize = targetCamera.orthographicSize;
+
+        currentOrthoMultiplier = Mathf.Clamp(multiplier, minOrthoMultiplier, maxOrthoMultiplier);
+        targetCamera.orthographicSize = defaultOrthoSize * currentOrthoMultiplier;
+    }
+
+    public void ResetOrthoSize()
+    {
+        SetOrthoSizeMultiplier(1f);
+    }
+
+    public float GetCurrentOrthoSizeMultiplier()
+    {
+        return currentOrthoMultiplier;
+    }
+}

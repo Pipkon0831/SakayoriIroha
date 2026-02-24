@@ -19,8 +19,5 @@ public class Pistol : BaseWeapon
             // 传递伤害和方向
             bulletComp.InitBullet(GetFinalDamage(), aimDirection, bulletSpeed);
         }
-
-        // 子弹自动销毁
-        Destroy(bullet, 2f);
     }
 }

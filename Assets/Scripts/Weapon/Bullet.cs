@@ -85,10 +85,4 @@ public class Bullet : MonoBehaviour
         
         Destroy(gameObject);
     }
-
-    // 可选：场景切换/子弹被禁用时，强制销毁（防止内存泄漏）
-    private void OnDisable()
-    {
-        DestroyBullet();
-    }
 }

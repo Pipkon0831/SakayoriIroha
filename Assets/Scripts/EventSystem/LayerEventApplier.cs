@@ -5,44 +5,135 @@ public class LayerEventApplier : MonoBehaviour
 {
     private CombatModifierSystem combatSystem;
     private PlayerController player;
+    private RoomFirstDungeonGenerator dungeonGenerator;
 
     private void Awake()
     {
         combatSystem = CombatModifierSystem.Instance;
         player = FindObjectOfType<PlayerController>();
+        dungeonGenerator = FindObjectOfType<RoomFirstDungeonGenerator>();
     }
 
-    /// <summary>应用所有事件的效果（临时+长期）</summary>
-    public void ApplyAllEvents()
+    public void ApplyCurrentFloorEvents()
     {
-        List<LayerEvent> events = LayerEventSystem.Instance.GetAllActiveEvents();
+        if (LayerEventSystem.Instance == null) return;
 
-        // 先重置倍率（临时事件每层重新应用）
+        if (combatSystem == null) combatSystem = CombatModifierSystem.Instance;
+        if (player == null) player = FindObjectOfType<PlayerController>();
+        if (dungeonGenerator == null) dungeonGenerator = FindObjectOfType<RoomFirstDungeonGenerator>();
+
         combatSystem.ResetAll();
 
+        if (CameraController.Instance != null)
+            CameraController.Instance.ResetOrthoSize();
+
+        if (dungeonGenerator != null)
+            dungeonGenerator.SetRoomOverrideMode(RoomOverrideMode.None);
+
+        List<LayerEvent> events = LayerEventSystem.Instance.GetCurrentFloorEvents();
         foreach (var e in events)
         {
-            ApplyEvent(e);
+            ApplySingleFloorEvent(e);
         }
     }
 
-    private void ApplyEvent(LayerEvent e)
+    private void ApplySingleFloorEvent(LayerEvent e)
     {
         switch (e.eventType)
         {
-            // 正面临时效果
-            case LayerEventType.AttackPowerUp:
-                if (e.isPersistent)
-                    player.AddAttack(e.value);
-                else
-                    combatSystem.playerDamageMultiplier += e.value;
+            case LayerEventType.LowVision:
+            {
+                // value: 0.35~1.0（倍率）
+                float m = Mathf.Clamp(e.value, 0.35f, 1f);
+                if (CameraController.Instance != null)
+                    CameraController.Instance.SetOrthoSizeMultiplier(m);
                 break;
+            }
 
-            case LayerEventType.MaxHPUp:
-                if (e.isPersistent)
-                    player.AddMaxHP(e.value);
-                else
-                    combatSystem.playerReceiveDamageMultiplier -= e.value;
+            case LayerEventType.EnemyMoveSpeedUp:
+            {
+                // value: 0.2 => 速度 * 1.2
+                float ratio = Mathf.Clamp(e.value, 0f, 3f);
+                combatSystem.enemySpeedMultiplier *= (1f + ratio);
+                break;
+            }
+
+            case LayerEventType.PlayerDealMoreDamage:
+            {
+                float ratio = Mathf.Clamp(e.value, 0f, 3f);
+                combatSystem.playerDamageMultiplier *= (1f + ratio);
+                break;
+            }
+
+            case LayerEventType.PlayerReceiveMoreDamage:
+            {
+                float ratio = Mathf.Clamp(e.value, 0f, 3f);
+                combatSystem.playerReceiveDamageMultiplier *= (1f + ratio);
+                break;
+            }
+
+            case LayerEventType.PlayerAttackSpeedUp:
+            {
+                float ratio = Mathf.Clamp(e.value, 0f, 3f);
+                combatSystem.playerAttackSpeedMultiplier *= (1f + ratio);
+                break;
+            }
+
+            case LayerEventType.PlayerAttackSpeedDown:
+            {
+                // value: 0.2 => 攻速 * 0.8
+                float ratio = Mathf.Clamp(e.value, 0f, 0.9f);
+                combatSystem.playerAttackSpeedMultiplier *= (1f - ratio);
+                combatSystem.playerAttackSpeedMultiplier = Mathf.Max(0.25f, combatSystem.playerAttackSpeedMultiplier);
+                break;
+            }
+
+            case LayerEventType.AllRoomsMonsterExceptBossAndSpawn:
+            {
+                if (dungeonGenerator != null)
+                    dungeonGenerator.SetRoomOverrideMode(RoomOverrideMode.AllMonsterExceptBossAndSpawn);
+                break;
+            }
+
+            case LayerEventType.AllRoomsRewardExceptBossAndSpawn:
+            {
+                if (dungeonGenerator != null)
+                    dungeonGenerator.SetRoomOverrideMode(RoomOverrideMode.AllRewardExceptBossAndSpawn);
+                break;
+            }
+
+            // ========= 其余类型（一次性/不该出现在单层应用里） =========
+            default:
+                // 安全忽略，避免混用导致重复执行
+                break;
+        }
+    }
+
+    // =========================
+    // 入口 2：应用并清空一次性事件（经验/回血/永久属性加减）
+    // =========================
+    public void ApplyAndConsumeInstantEvents()
+    {
+        if (LayerEventSystem.Instance == null) return;
+
+        if (player == null) player = FindObjectOfType<PlayerController>();
+
+        List<LayerEvent> instants = LayerEventSystem.Instance.ConsumeInstantEvents();
+        foreach (var e in instants)
+        {
+            ApplyInstantEvent(e);
+        }
+    }
+
+    private void ApplyInstantEvent(LayerEvent e)
+    {
+        if (player == null) return;
+
+        switch (e.eventType)
+        {
+            // ========= 一次性永久事件 =========
+            case LayerEventType.GainExp:
+                player.AddExp(e.value);
                 break;
 
             case LayerEventType.Heal:
@@ -52,20 +143,23 @@ public class LayerEventApplier : MonoBehaviour
             case LayerEventType.LoseHP:
                 player.TakeDamageDirect(e.value);
                 break;
-            case LayerEventType.GainExp:
-                player.AddExp(e.value);
+
+            case LayerEventType.PlayerMaxHPUp:
+                player.AddMaxHP(e.value);
                 break;
 
-            // 负面临时效果
-            case LayerEventType.EnemySpeedUp:
-                combatSystem.enemyMoveSpeedMultiplier += e.value;
+            case LayerEventType.PlayerMaxHPDown:
+                player.AddMaxHP(-e.value);
                 break;
 
-            case LayerEventType.PlayerReceiveMoreDamage:
-                combatSystem.playerReceiveDamageMultiplier += e.value;
+            case LayerEventType.PlayerAttackUp:
+                player.AddAttack(e.value);
                 break;
 
-            // 特殊事件可在这里扩展
+            case LayerEventType.PlayerAttackDown:
+                player.AddAttack(-e.value);
+                break;
+
         }
     }
 }

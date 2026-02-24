@@ -145,7 +145,7 @@ public class Enemy : MonoBehaviour
 
         if (CombatModifierSystem.Instance != null)
         {
-            finalSpeed *= CombatModifierSystem.Instance.enemyMoveSpeedMultiplier;
+            finalSpeed *= CombatModifierSystem.Instance.enemySpeedMultiplier;
         }
 
         Vector2 moveDir = dir * finalSpeed;
@@ -229,7 +229,7 @@ public class Enemy : MonoBehaviour
 
             if (CombatModifierSystem.Instance != null)
             {
-                finalDamage *= CombatModifierSystem.Instance.enemyDamageMultiplier;
+                finalDamage *= CombatModifierSystem.Instance.playerReceiveDamageMultiplier;
             }
 
             player.TakeDamage(finalDamage);
@@ -260,7 +260,6 @@ public class Enemy : MonoBehaviour
         if (player != null)
         {
             player.AddExp(expReward);
-            Debug.Log($"[怪物死亡] 玩家获得{expReward}经验");
         }
         
         // 通知游戏控制器移除该怪物
