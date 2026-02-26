@@ -38,9 +38,21 @@
 
 ---
 
-## 支持Unity版本
+## 注意事项
 
-Unity 2021.3.32f1c1
+### Unity 版本
+- Unity 2021.3.32f1c1
+
+---
+
+### DeepSeek API Key 设置方式
+
+本项目通过环境变量 `DEEPSEEK_API_KEY` 读取 API Key。  
+请在 Windows PowerShell 中执行以下命令：  
+
+```powershell
+setx DEEPSEEK_API_KEY "your_api_key_here"
+```
 
 ---
 
@@ -74,15 +86,49 @@ Unity 2021.3.32f1c1
 
 ## 目前已实现部分
 
-1. 开始游戏后自动生成一次地牢  
-2. 地牢设定最远两个房间为出生点与Boss房  
-3. 可通过 RoomsFirstDungeonGenerator 按钮测试地牢生成  
-4. WASD 控制移动，进入战斗房间后自动进入战斗状态，清空当前房间怪物后自动退出战斗  
-5. 完成基础战斗系统与武器系统架构，实现房间怪物实时检测机制、BaseWeapon + WeaponManager 武器管理结构、基础手枪与子弹逻辑，以及 Boss 房通关后延迟自动重生地牢机制  
-6. 完成简易怪物AI系统（闲置游走、玩家追击、攻击判定），新增死亡状态标记防止重复触发逻辑  
-7. 完善游戏生命周期管理，新增玩家死亡判定、暂停逻辑与死亡UI触发机制  
-8. 构建LLM接入底层架构：实现战斗倍率系统（玩家/敌人伤害/攻速/移速等）、事件系统（区分临时/长期事件）、LLM事件桥接层，支持事件与战斗倍率的联动映射  
-9. 完成完整事件闭环构建：UI / JSON → LayerEventSystem → Commit → Apply → FloorEnd，经过多轮测试验证生命周期稳定  
+1. 地牢生成与房间分配  
+   - 开始游戏后自动生成一次地牢  
+   - 地牢设定最远两个房间为出生点与 Boss 房  
+   - 可通过 RoomsFirstDungeonGenerator 按钮测试地牢生成  
+
+2. 玩家控制与战斗流程  
+   - WASD 控制移动  
+   - 进入战斗房间后自动进入战斗状态，清空当前房间怪物后自动退出战斗  
+   - Boss 房通关后延迟触发下一层流程（对话 → 新层生成）  
+
+3. 武器系统与基础射击  
+   - 完成基础武器系统架构（BaseWeapon + WeaponManager）  
+   - 实现基础手枪与子弹逻辑  
+
+4. 怪物 AI 与死亡处理  
+   - 完成简易怪物 AI 系统（闲置游走、玩家追击、攻击判定）  
+   - 新增死亡状态标记，防止重复触发逻辑  
+
+5. 游戏生命周期与 UI 管理  
+   - 新增玩家死亡判定  
+   - 实现游戏暂停逻辑  
+   - 实现死亡 UI 触发与重开流程  
+
+6. 事件系统与战斗数值联动（LLM 底层支撑）  
+   - 构建 LayerEventSystem，区分单层事件与即时永久事件  
+   - 构建战斗倍率系统（玩家/敌人伤害、攻速、移速、视野等）  
+   - 完成完整事件生命周期闭环：  
+     UI / JSON → LayerEventSystem → Commit → Apply → FloorEnd  
+   - 多轮连续通关测试验证生命周期稳定  
+
+7. LLM 接入与 NPC 对话闭环系统  
+   - 建立 LLM 调用抽象层（ILLMClient + DeepSeekLLMProvider）  
+   - 使用 json_object 输出模式保证结构化响应  
+   - 构建 LLMOrchestrator 业务编排层（Decision JSON + Opening Line 分离）  
+   - 实现 NPCDecisionUI 状态机（OpeningWaiting / Typing / WaitingLLM / Result）  
+   - 开局首句固定，后续每次打开对话 UI 时向 LLM 请求开场白  
+   - 玩家发送后请求决策 JSON，点击继续后应用事件与好感度并进入下一层  
+
+8. 本局人格系统（Run-Level Personality）  
+   - 使用 ScriptableObject 定义 NPCPersonalityDefinition  
+   - 开局随机抽取一次人格，整局固定（DontDestroyOnLoad）  
+   - 支持 Prompt 注入（system / opening / decision 级别扩展）  
+   - 预留人格 × 好感度区间立绘切换接口
 
 ---
 
@@ -92,6 +138,7 @@ Unity 2021.3.32f1c1
 - 26/2/23：重构战斗退出逻辑（由ESC手动退出改为清怪自动退出）；实现房间怪物实时检测机制；完成基础武器系统架构（BaseWeapon + WeaponManager）；实现基础手枪与子弹系统；新增 Boss 房通关后延迟自动重生地牢功能。
 - 26/2/24：实现完整怪物AI逻辑（闲置游走、追击、攻击、分离）；完善游戏生命周期（玩家死亡判定、暂停、死亡UI）；新增LLM接入底层核心系统（CombatModifierSystem/LayerEventSystem等），区分临时/长期事件类型，完成事件与战斗数值的联动映射，为LLM接入奠定架构基础。
 - 26/2/25：完成全部事件接口构建与 JSON 模拟 LLM 输入系统；实现三层事件结构；完成多层连续测试。
+- 26/2/27：完成 LLM 真实联网接入（DeepSeek JSON Object 输出）与调用抽象层（ApiKeyProvider/ILLMClient/Provider）；实现 LLMOrchestrator 业务编排（Decision JSON + Opening Line）；重构 NPCDecisionUI 状态机（OpeningWaiting/Typing/Waiting/Result），确定“开局固定首句、后续每次打开 UI 请求开场白”的稳定策略；引入本局人格系统（ScriptableObject 池随机抽取，整局固定）并支持 Prompt 注入，预留人格×好感度立绘切换能力。
 
 
 ---
@@ -135,9 +182,21 @@ Unity 2021.3.32f1c1
 
 ---
 
-## 対応Unityバージョン
+## 注意事項
 
-Unity 2021.3.32f1c1
+### Unity バージョン
+- Unity 2021.3.32f1c1
+
+---
+
+### DeepSeek API Key 設定方法
+
+本プロジェクトでは環境変数 `DEEPSEEK_API_KEY` から API Key を取得します。  
+Windows PowerShell にて以下のコマンドを実行してください：
+
+```powershell
+setx DEEPSEEK_API_KEY "your_api_key_here"
+```
 
 ---
 
@@ -171,15 +230,51 @@ Unity 2021.3.32f1c1
 
 ## 実装済み機能
 
-1. ゲーム開始後にダンジョンを自動生成  
-2. ダンジョン内で最も距離の離れた2つの部屋を開始地点およびBossルームとして設定  
-3. RoomsFirstDungeonGenerator ボタンからダンジョン生成テストが可能  
-4. WASDキーで移動し、戦闘ルーム進入時に自動で戦闘状態へ移行、当該ルーム内の敵を全滅させると自動的に戦闘状態を解除  
-5. 基本戦闘システムおよび武器システムアーキテクチャを実装し、部屋内敵リアルタイム検出機構、BaseWeapon + WeaponManager による武器管理構造、基本ピストルおよび弾丸ロジック、Bossルーム通関後の遅延ダンジョン自動再生成機能を構築  
-6. 簡易敵AIシステムを実装（待機時遊走、プレイヤー追跡、攻撃判定）、死亡状態フラグを追加し死亡ロジックの重複トリガーを防止  
-7. ゲームライフサイクル管理を完善し、プレイヤー死亡判定、一時停止ロジック、死亡UIトリガー機構を追加  
-8. LLM統合の基盤アーキテクチャを構築：戦闘倍率システム（プレイヤー／敵のダメージ・攻撃速度・移動速度等）、イベントシステム（一時イベント／長期イベントの区分）、LLMイベントブリッジレイヤーを実装し、イベントと戦闘倍率の連動マッピングを実現  
-9. 完整なイベント閉環を構築：UI / JSON → LayerEventSystem → Commit → Apply → FloorEnd のフローを実装し、複数回のテストを経てライフサイクルの安定性を検証  
+## 実装済み機能
+
+1. ダンジョン生成および部屋構造  
+   - ゲーム開始時に自動でダンジョンを1回生成  
+   - 最遠距離の2部屋をスポーン地点とボス部屋に設定  
+   - RoomsFirstDungeonGenerator ボタンによりダンジョン生成テストが可能  
+
+2. プレイヤー操作および戦闘フロー  
+   - WASD による移動操作  
+   - 戦闘部屋に入ると自動で戦闘状態へ移行し、部屋内の敵を全滅させると自動で戦闘終了  
+   - ボス部屋クリア後、一定時間後に次階層フロー（対話 → 新階層生成）を開始  
+
+3. 武器システムおよび基本射撃機構  
+   - BaseWeapon + WeaponManager による武器管理アーキテクチャを構築  
+   - 基本的なハンドガンおよび弾丸システムを実装  
+
+4. 敵AIおよび死亡処理  
+   - 簡易敵AIを実装（待機巡回、プレイヤー追跡、攻撃判定）  
+   - 死亡状態フラグを追加し、重複処理の発生を防止  
+
+5. ゲームライフサイクルおよびUI管理  
+   - プレイヤー死亡判定を実装  
+   - ゲーム一時停止ロジックを実装  
+   - 死亡UI表示およびリスタート処理を実装  
+
+6. イベントシステムおよび戦闘数値連動（LLM基盤）  
+   - LayerEventSystem を構築し、単層イベントと即時永続イベントを区別  
+   - 戦闘倍率システムを構築（プレイヤー／敵の攻撃力・攻撃速度・移動速度・視野など）  
+   - 完全なイベントライフサイクルを実装：  
+     UI / JSON → LayerEventSystem → Commit → Apply → FloorEnd  
+   - 複数階層連続テストにより安定性を検証  
+
+7. LLM連携およびNPC対話クローズドループ  
+   - LLM呼び出し抽象層を構築（ILLMClient + DeepSeekLLMProvider）  
+   - json_object 出力モードを採用し、構造化レスポンスを保証  
+   - LLMOrchestrator による業務編成層を実装（Decision JSON と Opening Line を分離）  
+   - NPCDecisionUI の状態管理を実装（OpeningWaiting / Typing / WaitingLLM / Result）  
+   - ゲーム開始時の最初の発話は固定、それ以降は対話UI表示時にLLMへ開場発話を要求  
+   - プレイヤー送信後に Decision JSON を取得し、「続行」操作でイベントと好感度を適用し次階層へ遷移  
+
+8. 本局人格システム（Run-Level Personality）  
+   - ScriptableObject により NPCPersonalityDefinition を定義  
+   - ゲーム開始時に人格をランダム抽出し、セッション中は固定（DontDestroyOnLoad）  
+   - Prompt 注入に対応（system / opening / decision レベル拡張）  
+   - 人格 × 好感度区間による立ち絵切替インターフェースを予約実装
 
 ---
 
@@ -189,6 +284,10 @@ Unity 2021.3.32f1c1
 - 26/2/23：戦闘終了ロジックをESC手動解除方式から敵全滅による自動解除方式へ変更；部屋内敵リアルタイム検出機構を実装；基本武器システムアーキテクチャ（BaseWeapon + WeaponManager）を構築；基本ピストルおよび弾丸システムを実装；Bossルーム通関後の遅延ダンジョン自動再生成機能を追加。  
 - 26/2/24：敵AIの完全ロジック（待機時遊走、追跡、攻撃、分離）を実装；ゲームライフサイクル（プレイヤー死亡判定、一時停止、死亡UI）を完善；LLM統合の基盤コアシステム（CombatModifierSystem / LayerEventSystem 等）を追加し、一時／長期イベントタイプを区分、イベントと戦闘数値の連動マッピングを完成、LLM統合の基盤を構築。  
 - 26/2/25：全イベントインターフェースを構築；JSONによるLLM入力シミュレーションシステムを実装；三層構造イベントシステムを構築；多層連続テストを完了。  
+- 26/2/27：DeepSeek による LLM の実ネットワーク接続を完了（json_object 出力モードを使用）。ApiKeyProvider / ILLMClient / DeepSeekLLMProvider による呼び出し抽象層を構築。  
+  LLMOrchestrator にて Decision JSON と Opening Line を分離した業務編成ロジックを実装。  
+  NPCDecisionUI の状態機械（OpeningWaiting / Typing / WaitingLLM / Result）を再設計し、「初回は固定発話、それ以降は対話UI表示時にLLMへ開場発話を要求する」安定戦略へ移行。  
+  本局人格システム（ScriptableObject プールからランダム抽出、セッション中固定）を導入し、Prompt 注入に対応。人格 × 好感度による立ち絵切替インターフェースを予約実装。
 
 
 ---

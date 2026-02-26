@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
+using System.Threading;
 
 public class GameController : MonoBehaviour
 {
@@ -27,8 +28,8 @@ public class GameController : MonoBehaviour
     private readonly List<GameObject> currentRoomEnemies = new List<GameObject>();
 
     [Header("NPC对话配置")]
-    [SerializeField] private NPCDecisionUI_TMP npcDecisionUI;
-    
+    [SerializeField] private NPCDecisionUI npcDecisionUI;
+
     private bool isGameOver = false;
 
     public int CurrentFloorIndex { get; private set; } = 0;
@@ -40,17 +41,38 @@ public class GameController : MonoBehaviour
 
     private void Start()
     {
-        if (autoGenerateOnStart)
-        {
-            if (npcDecisionUI != null) npcDecisionUI.Show();
-            else StartNewFloor(); // 兜底
-        }
-
         IsInCombat = false;
         isGameOver = false;
 
+        // ✅ 开局确保抽取“本局人格”（只抽一次，整局固定）
+        if (NPCRunPersonalityManager.Instance != null)
+            NPCRunPersonalityManager.Instance.EnsurePicked();
+
         if (deathPanel != null)
             deathPanel.SetActive(false);
+
+        if (!autoGenerateOnStart)
+            return;
+
+        // ✅ 开局保险：清理事件残留（Editor 多次运行时很常见）
+        if (LayerEventSystem.Instance != null)
+        {
+            LayerEventSystem.Instance.ClearNextFloorEvents();
+            LayerEventSystem.Instance.ClearCurrentFloorEvents();
+            LayerEventSystem.Instance.ConsumeInstantEvents();
+        }
+
+        // ✅ 正常流程：开局先进入 NPC 对话阶段（NPC 首句固定，不等 LLM）
+        if (npcDecisionUI != null)
+        {
+            npcDecisionUI.Show();
+        }
+        else
+        {
+            Debug.LogWarning("GameController: 未配置 NPCDecisionUI，兜底直接进入第一层。");
+            StartNewFloor();
+            MovePlayerToSpawnRoomCenterIfPossible();
+        }
     }
 
     private void Update()
@@ -65,6 +87,13 @@ public class GameController : MonoBehaviour
         CheckPlayerRoomChange();
     }
 
+    /// <summary>
+    /// 进入新层：
+    /// 1) next -> current
+    /// 2) 应用本层事件
+    /// 3) 生成地牢
+    /// 4) ✅ 后台预取“下一次对话阶段开场白”（用于下一层结束后的对话，不阻塞）
+    /// </summary>
     public void StartNewFloor()
     {
         CurrentFloorIndex++;
@@ -86,17 +115,6 @@ public class GameController : MonoBehaviour
         else
         {
             Debug.LogWarning("GameController: 未找到LayerEventApplier，本层事件不会被应用。");
-        }
-
-        // 3) 如果你当前仍用模拟LLM决策：它应该在“Boss后对话确认”时调用
-        if (LLMEventBridge.Instance != null && CurrentFloorIndex == 1)
-        {
-            // 只在第一层开始时模拟一次（相当于“开局与NPC对话”）
-            LLMEventBridge.Instance.SimulateLLMDecision();
-
-            // 模拟LLM可能会写入 instantEvents，这里立刻执行一次性事件
-            if (layerEventApplier != null)
-                layerEventApplier.ApplyAndConsumeInstantEvents();
         }
 
         GenerateGameDungeon();
@@ -124,22 +142,15 @@ public class GameController : MonoBehaviour
     public void RegenerateDungeon()
     {
         GenerateGameDungeon();
-
-        // 将玩家移回 Spawn
         MovePlayerToSpawnRoomCenterIfPossible();
     }
 
     private void CheckPlayerRoomChange()
     {
-        if (player == null)
-        {
-            return;
-        }
+        if (player == null) return;
 
         if (dungeonGenerator == null || dungeonGenerator.allRoomData == null || dungeonGenerator.allRoomData.Count == 0)
-        {
             return;
-        }
 
         Vector2Int playerGridPos = new Vector2Int(
             Mathf.FloorToInt(player.transform.position.x),
@@ -151,11 +162,7 @@ public class GameController : MonoBehaviour
         foreach (var room in dungeonGenerator.allRoomData)
         {
             if (room == null) continue;
-
-            if (room.floorPositions == null)
-            {
-                continue;
-            }
+            if (room.floorPositions == null) continue;
 
             if (room.floorPositions.Contains(playerGridPos))
             {
@@ -191,7 +198,6 @@ public class GameController : MonoBehaviour
                 ExitCombatState();
                 break;
 
-            // Reward房一般也退出战斗（按你需要）
             case RoomData.RoomType.Reward:
                 ExitCombatState();
                 break;
@@ -251,9 +257,7 @@ public class GameController : MonoBehaviour
                 currentPlayerRoom.isCleared = true;
 
                 if (currentPlayerRoom.roomType == RoomData.RoomType.Boss)
-                {
                     isBossRoomCleared = true;
-                }
             }
         }
 
@@ -271,11 +275,10 @@ public class GameController : MonoBehaviour
     {
         isWaitingToRegen = true;
 
-        // 1) Boss 清完后延迟（你原本就有）
+        // 1) Boss 清完后延迟
         yield return new WaitForSeconds(delayAfterBossClear);
 
-        // 2) 进入“对话决策阶段”：弹 UI（正式接入LLM时也是这里）
-        // 注意：此时不要 StartNewFloor()，由 UI 的 Confirm 按钮去触发 StartNewFloor()
+        // 2) 弹对话UI：此处不 StartNewFloor，由 UI 的 Continue/Confirm 触发 StartNewFloor
         if (npcDecisionUI != null)
         {
             npcDecisionUI.Show();
@@ -287,15 +290,13 @@ public class GameController : MonoBehaviour
             MovePlayerToSpawnRoomCenterIfPossible();
         }
 
-        // 3) 等待标记重置：
-        // - 如果弹UI：UI确认后会 StartNewFloor()，我们在这里先放开标记，避免卡死
-        // - 如果兜底直接进下一层：也已执行完
         isWaitingToRegen = false;
     }
 
     private void MovePlayerToSpawnRoomCenterIfPossible()
     {
-        if (player == null || dungeonGenerator == null || dungeonGenerator.allRoomData == null || dungeonGenerator.allRoomData.Count == 0) return;
+        if (player == null || dungeonGenerator == null || dungeonGenerator.allRoomData == null || dungeonGenerator.allRoomData.Count == 0)
+            return;
 
         RoomData spawnRoom = dungeonGenerator.allRoomData.Find(r => r.roomType == RoomData.RoomType.Spawn);
         if (spawnRoom == null) return;
@@ -361,4 +362,12 @@ public class GameController : MonoBehaviour
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
+
+    // 给 UI 调用
+    public void MovePlayerToSpawnRoomCenterIfPossible_Public()
+    {
+        MovePlayerToSpawnRoomCenterIfPossible();
+    }
+
+
 }

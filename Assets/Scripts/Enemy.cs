@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public class Enemy : MonoBehaviour
@@ -7,18 +8,18 @@ public class Enemy : MonoBehaviour
     [SerializeField] private float expReward = 20f;
     [SerializeField] private float attackDamage = 10f;
     [SerializeField] private float attackCooldown = 1f;
-    [SerializeField] private float attackCheckRadius = 1.8f; 
+    [SerializeField] private float attackCheckRadius = 1.8f;
 
     [Header("AI 移动")]
     [SerializeField] private float moveSpeed = 2f;
-    [SerializeField] private float chaseRange = 6f;    
-    [SerializeField] private float stopRange = 1.3f;    
+    [SerializeField] private float chaseRange = 6f;
+    [SerializeField] private float stopRange = 1.3f;
     [SerializeField] private float enemySeparation = 1f;
 
     [Header("随机游走")]
     [SerializeField] private float idleMoveSpeed = 0.5f;
-    [SerializeField] private float idleChangeDirTime = 2f;  
-    [SerializeField] private float idleWanderRadius = 1.5f; 
+    [SerializeField] private float idleChangeDirTime = 2f;
+    [SerializeField] private float idleWanderRadius = 1.5f;
 
     private float currentHP;
     private PlayerController player;
@@ -26,8 +27,8 @@ public class Enemy : MonoBehaviour
     private RoomData currentRoom;
 
     private float lastAttackTime;
-    private Vector2 idleTargetPos;    
-    private float idleDirTimer;       
+    private Vector2 idleTargetPos;
+    private float idleDirTimer;
 
     private enum EnemyState { Idle, Chase, Attack }
     private EnemyState currentState;
@@ -37,7 +38,7 @@ public class Enemy : MonoBehaviour
     private LayerMask playerLayer;
     private ContactFilter2D playerContactFilter;
 
-    // 新增：标记是否已死亡，防止重复触发死亡逻辑
+    // 标记是否已死亡，防止重复触发死亡逻辑
     private bool isDead = false;
 
     private void Awake()
@@ -70,15 +71,39 @@ public class Enemy : MonoBehaviour
 
     private void Start()
     {
-        GetEnemyCurrentRoom();
+        // ✅ 防御：等地牢生成/房间数据 ready 再尝试绑定房间，避免 NRE
+        StartCoroutine(InitRoomCoroutine());
+    }
+
+    private IEnumerator InitRoomCoroutine()
+    {
+        // 最多等待 30 帧
+        for (int i = 0; i < 30; i++)
+        {
+            if (TryGetEnemyCurrentRoom())
+                yield break;
+
+            yield return null;
+        }
+
+        // 超时不崩：进入降级模式（后续 FixedUpdate 仍会再尝试）
+        Debug.LogWarning($"[Enemy] {name} 无法定位所属房间（30帧超时）。将保持 Idle，直到后续可定位。");
     }
 
     private void FixedUpdate()
     {
-        // 新增：死亡后直接返回，不再执行任何逻辑
+        // 死亡后直接返回，不再执行任何逻辑
         if (isDead) return;
-        
-        if (player == null || currentRoom == null) return;
+
+        // player 缺失就不跑
+        if (player == null) return;
+
+        // ✅ 防御：如果没拿到房间，尝试补一次（例如地牢刚生成/刷新）
+        if (currentRoom == null)
+        {
+            TryGetEnemyCurrentRoom();
+            if (currentRoom == null) return;
+        }
 
         UpdateEnemyState();
 
@@ -99,6 +124,13 @@ public class Enemy : MonoBehaviour
     #region AI 状态更新
     private void UpdateEnemyState()
     {
+        if (gameController == null) gameController = FindObjectOfType<GameController>();
+        if (gameController == null)
+        {
+            currentState = EnemyState.Idle;
+            return;
+        }
+
         if (gameController.GetCurrentPlayerRoom() != currentRoom)
         {
             currentState = EnemyState.Idle;
@@ -132,7 +164,7 @@ public class Enemy : MonoBehaviour
         Vector2 dir = (idleTargetPos - (Vector2)transform.position).normalized;
         Vector2 moveDir = dir * idleMoveSpeed;
 
-        moveDir += GetSeparationDirection(); 
+        moveDir += GetSeparationDirection();
         Move(moveDir);
     }
     #endregion
@@ -150,7 +182,7 @@ public class Enemy : MonoBehaviour
 
         Vector2 moveDir = dir * finalSpeed;
 
-        moveDir += GetSeparationDirection(); 
+        moveDir += GetSeparationDirection();
         Move(moveDir);
     }
     #endregion
@@ -159,7 +191,7 @@ public class Enemy : MonoBehaviour
     private void AttackState()
     {
         rb.velocity = rb.velocity * 0.5f;
-        
+
         if (IsPlayerOverlapping())
         {
             TryAttackPlayer();
@@ -170,7 +202,7 @@ public class Enemy : MonoBehaviour
     {
         Collider2D[] hitColliders = new Collider2D[1];
         int hitCount = Physics2D.OverlapCircle(transform.position, attackCheckRadius, playerContactFilter, hitColliders);
-        
+
         return hitCount > 0 && hitColliders[0] != null && hitColliders[0].GetComponent<PlayerController>() == player;
     }
     #endregion
@@ -190,6 +222,9 @@ public class Enemy : MonoBehaviour
 
     private bool IsInRoom(Vector2 pos)
     {
+        // ✅ 防御：拿不到 room 时降级处理（不阻塞移动）
+        if (currentRoom == null || currentRoom.floorPositions == null) return true;
+
         Vector2Int grid = new Vector2Int(Mathf.FloorToInt(pos.x), Mathf.FloorToInt(pos.y));
         return currentRoom.floorPositions.Contains(grid);
     }
@@ -223,7 +258,6 @@ public class Enemy : MonoBehaviour
 
         if (Time.fixedTime - lastAttackTime >= attackCooldown)
         {
-            // 新增：调试日志，确认扣血次数和数值
             Debug.Log($"[怪物攻击] 扣血{attackDamage}，玩家当前血量：{player.CurrentHP}");
             float finalDamage = attackDamage;
 
@@ -237,54 +271,62 @@ public class Enemy : MonoBehaviour
         }
     }
 
-    // 修复：怪物受击逻辑（删除玩家死亡调用，补充怪物自身死亡逻辑）
     public void TakeDamage(float damage)
     {
-        // 死亡后不再受击
         if (isDead) return;
-        
+
         currentHP = Mathf.Max(0, currentHP - damage);
 
         if (currentHP <= 0)
         {
-            Die(); // 调用怪物自身死亡逻辑
+            Die();
         }
     }
 
-    // 修复：怪物死亡逻辑（移除玩家死亡相关代码）
     private void Die()
     {
-        isDead = true; // 标记死亡，停止所有逻辑
+        isDead = true;
 
-        // 给玩家加经验
         if (player != null)
         {
             player.AddExp(expReward);
         }
-        
-        // 通知游戏控制器移除该怪物
+
         if (gameController != null)
             gameController.NotifyEnemyDeath(gameObject);
 
-        // 销毁怪物对象
         Destroy(gameObject);
     }
     #endregion
 
-    #region 房间检测
-    private void GetEnemyCurrentRoom()
+    #region 房间检测（防御式）
+    private bool TryGetEnemyCurrentRoom()
     {
-        if (gameController == null || gameController.dungeonGenerator == null) return;
+        if (gameController == null) gameController = FindObjectOfType<GameController>();
+        if (gameController == null) return false;
 
-        Vector2Int g = new Vector2Int(Mathf.FloorToInt(transform.position.x), Mathf.FloorToInt(transform.position.y));
+        if (gameController.dungeonGenerator == null) return false;
+        if (gameController.dungeonGenerator.allRoomData == null || gameController.dungeonGenerator.allRoomData.Count == 0)
+            return false;
+
+        Vector2Int g = new Vector2Int(
+            Mathf.FloorToInt(transform.position.x),
+            Mathf.FloorToInt(transform.position.y)
+        );
+
         foreach (var r in gameController.dungeonGenerator.allRoomData)
         {
+            if (r == null) continue;
+            if (r.floorPositions == null) continue;
+
             if (r.floorPositions.Contains(g))
             {
                 currentRoom = r;
-                break;
+                return true;
             }
         }
+
+        return false;
     }
     #endregion
 
