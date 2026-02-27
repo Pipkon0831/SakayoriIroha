@@ -1,6 +1,4 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using System.Collections.Generic;
 
 public static class WallTypesHelper
 {
@@ -151,5 +149,4 @@ public static class WallTypesHelper
     {
         0b01000001
     };
-
 }

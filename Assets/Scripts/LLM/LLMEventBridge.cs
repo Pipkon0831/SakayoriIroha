@@ -4,7 +4,7 @@ public class LLMEventBridge : MonoBehaviour
 {
     public static LLMEventBridge Instance { get; private set; }
 
-    [Header("好感度（由LLM输出 delta 控制）")]
+    [Header("好感度")]
     [SerializeField] private int affinity = 0;
     public int Affinity => affinity;
 

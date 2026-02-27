@@ -6,8 +6,7 @@ using UnityEngine;
 
 /// <summary>
 /// LLM 业务编排层：
-/// - 玩家发送消息时：请求“决策JSON”（允许等待一次）
-/// - 进入新层时：后台预取“下一次NPC首句”（不阻塞玩家）
+/// - 玩家发送消息时：请求“决策JSON”
 /// - JSON失败/超时/空content：不重试LLM，直接本地fallback（事件+模糊回复）
 /// </summary>
 public class LLMOrchestrator : MonoBehaviour
@@ -29,6 +28,10 @@ public class LLMOrchestrator : MonoBehaviour
     [SerializeField] private float decisionTemperature = 0.7f;
     [SerializeField] private float openingTemperature = 0.9f;
 
+    [Header("Local fallback (Orchestrator)")]
+    [TextArea(1, 3)]
+    [SerializeField] private string orchestratorOpeningFallbackLine = "……说清楚你的打算。";
+
     private ILLMClient _client;
 
     private void Awake()
@@ -40,9 +43,9 @@ public class LLMOrchestrator : MonoBehaviour
         _client = new DeepSeekLLMProvider(modelName, ApiKeyProvider.Get);
     }
 
-    // =========================================================
-    // 玩家发送：请求决策 JSON（等待一次）
-    // =========================================================
+    // =========================
+    // Decision
+    // =========================
     public async Task<DecisionResult> RequestDecisionAsync(
         string playerText,
         int affinity,
@@ -79,27 +82,45 @@ public class LLMOrchestrator : MonoBehaviour
         }
     }
 
-    // =========================================================
-    // 预取：下一次对话阶段开场白（不阻塞）
-    // =========================================================
+    // =========================
+    // Opening (prefetch + direct request)
+    // =========================
     public async Task PrefetchOpeningLineAsync(
         int affinity,
         string historySummary,
         NPCProfile npc,
         CancellationToken ct)
     {
-        string npcName = (npc != null && !string.IsNullOrWhiteSpace(npc.npcName))
-            ? npc.npcName.Trim()
-            : "NPC";
+        string npcName = GetNpcNameSafe(npc);
 
-        // ✅ 只针对“这个 NPC”做短路，而不是全局短路
         if (NPCDialogueCache.Instance != null && NPCDialogueCache.Instance.HasOpeningFor(npcName))
             return;
 
         try
         {
+            string line = await RequestOpeningLineAsync(affinity, historySummary, npc, ct);
+            if (string.IsNullOrWhiteSpace(line))
+                line = PickOpeningFallbackLine();
+
+            NPCDialogueCache.Instance?.SetOpening(npcName, line.Trim());
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[LLM] Prefetch opening failed -> local opening. reason={ex.Message}");
+            NPCDialogueCache.Instance?.SetOpening(npcName, PickOpeningFallbackLine());
+        }
+    }
+
+    public async Task<string> RequestOpeningLineAsync(
+        int affinity,
+        string historySummary,
+        NPCProfile npc,
+        CancellationToken ct)
+    {
+        try
+        {
             var sys = BuildOpeningSystemPrompt(npc);
-            var usr = BuildOpeningUserPrompt(affinity, historySummary);
+            var usr = BuildOpeningUserPrompt(npc, affinity, historySummary);
 
             string rawOuter = await _client.RequestJsonAsync(
                 sys, usr,
@@ -116,18 +137,18 @@ public class LLMOrchestrator : MonoBehaviour
             if (string.IsNullOrWhiteSpace(line))
                 throw new Exception("Opening JSON missing npc_opening_line.");
 
-            NPCDialogueCache.Instance?.SetOpening(npcName, line.Trim());
+            return line.Trim();
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[LLM] Prefetch opening failed -> local opening. reason={ex.Message}");
-            NPCDialogueCache.Instance?.SetOpening(npcName, PickFallbackOpeningLine());
+            Debug.LogWarning($"[LLM] Opening failed -> fallback. reason={ex.Message}");
+            return PickOpeningFallbackLine();
         }
     }
 
-    // =========================================================
-    // Prompt: Decision
-    // =========================================================
+    // =========================
+    // Prompts
+    // =========================
     private string BuildDecisionSystemPrompt(NPCProfile npc)
     {
         string npcName = npc != null ? npc.npcName : "NPC";
@@ -144,7 +165,6 @@ public class LLMOrchestrator : MonoBehaviour
 "
             : "";
 
-        // ✅ 重点：默认必须给事件（除非玩家明确要求且NPC同意）
         return
 $@"你是游戏NPC【{npcName}】的“决策与对话引擎”。你必须使用中文输出，并且只能输出一个合法的 JSON 对象（json），禁止输出任何 JSON 之外的文字、markdown、解释、注释。
 
@@ -158,7 +178,7 @@ $@"你是游戏NPC【{npcName}】的“决策与对话引擎”。你必须使�
 
 【输出必须严格为 json_object，字段固定如下】
 {{
-  ""npc_reply"": ""string（中文，<=80字，1~2句）"",
+  ""npc_reply"": ""string（中文，<=160字，2~4句，像真人交流，可含少量口语停顿）"",
   ""affinity_delta"": int（-5~5）,
   ""next_floor_events"": [ {{ ""eventType"": ""EnumName"", ""value"": float }} ],
   ""instant_events"": [ {{ ""eventType"": ""EnumName"", ""value"": float }} ],
@@ -207,6 +227,12 @@ $@"你是游戏NPC【{npcName}】的“决策与对话引擎”。你必须使�
 - PlayerMaxHPUp / PlayerMaxHPDown：1 ~ 20
 - PlayerAttackUp / PlayerAttackDown：1 ~ 5
 
+【对话行为准则（强制）】
+- 你不是“提问机”。优先用“回应→评价→延伸”的节奏聊天。
+- 必须偶尔承接玩家上一句的关键词或情绪（至少每次都要做到一点）。
+- 不要每次都用相似句式开头（例如总是“行/可以/随你/继续”）。
+- 可以自然地表现：调侃、怀疑、欣赏、嫌弃、担心、占有欲等（受人格影响），但不要长篇说教。
+
 【硬性禁止】
 - 禁止输出 None
 - 禁止输出白名单之外的 eventType
@@ -219,26 +245,30 @@ $@"你是游戏NPC【{npcName}】的“决策与对话引擎”。你必须使�
     private string BuildDecisionUserPrompt(string playerText, int affinity, string historySummary)
     {
         return
-$@"（json）现在请根据上下文生成决策 JSON。
+            $@"（json）请基于“连续对话”生成决策 JSON。
 
-【上下文】
-- 当前好感度 affinity：{affinity}
-- 历史事件摘要 history_summary：{(string.IsNullOrWhiteSpace(historySummary) ? "（无）" : historySummary.Trim())}
+【当前关系】
+- 好感度 affinity：{affinity}
+
+【对话记忆 dialogue_memory（最近片段，可能被截断）】
+{(string.IsNullOrWhiteSpace(historySummary) ? "（无）" : historySummary.Trim())}
 
 【玩家本次发言】
 {(string.IsNullOrWhiteSpace(playerText) ? "（空）" : playerText.Trim())}
 
-【要求】
-1) npc_reply 必须像真人、带态度、<=80字、1~2句。
-2) 默认必须给 next_floor_events 至少 1 条；除非玩家明确要求且你同意顺从。
-3) eventType 必须来自白名单；不确定时用“温和事件兜底”。
+【回复写作规则（很重要）】
+1) npc_reply 必须像真人交流：先回应玩家话题/情绪，再补充你的态度/评价，最后可自然延伸（不强制提问）。
+2) 必须“呼应/引用”对话记忆里最近的一个点（情绪、用词、承诺、玩家偏好、上一句的某个关键词），让玩家感觉你记得。
+3) 避免NPC像面试官连续提问：提问最多 0~1 个，且要贴合刚才的话题。
+4) npc_reply 建议 2~4 句（但总字数仍需控制，不要长段落）。
+
+【事件规则】
+- 默认必须给 next_floor_events 至少 1 条；除非玩家明确要求不想影响游戏且你同意顺从。
+- eventType 必须来自白名单；不确定时用温和事件兜底。
 
 现在输出严格 JSON：";
     }
 
-    // =========================================================
-    // Prompt: Opening（每层开场白，预取用）
-    // =========================================================
     private string BuildOpeningSystemPrompt(NPCProfile npc)
     {
         string npcName = npc != null ? npc.npcName : "NPC";
@@ -277,21 +307,16 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
 - 只输出 JSON 对象";
     }
 
-    private string BuildOpeningUserPrompt(int affinity, string historySummary)
+    private string BuildOpeningUserPrompt(NPCProfile npc, int affinity, string historySummary)
     {
-        string npcName = "NPC";
-        // 注意：这里没 npc 形参时，就用历史 summary/默认，或者你也可以改函数签名传 npcName 进来
-        // 为了最小改动：我们只取“缓存里任意一个 last”（单NPC也够用）
+        string npcName = GetNpcNameSafe(npc);
         string last = "";
 
         if (NPCDialogueCache.Instance != null)
-        {
-            // 单NPC项目：直接读 NPC 这个桶就行；如果你有明确 npcName，可以换成 GetLastOpeningLineOrEmpty(npcName)
             last = NPCDialogueCache.Instance.GetLastOpeningLineOrEmpty(npcName);
-        }
 
         return
-            $@"（json）
+$@"（json）
 上下文：
 - 当前好感度 affinity：{affinity}
 - 历史事件摘要 history_summary：{(string.IsNullOrWhiteSpace(historySummary) ? "（无）" : historySummary.Trim())}
@@ -305,9 +330,9 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
 输出严格 JSON。";
     }
 
-    // =========================================================
-    // Outer -> Inner extraction (robust)
-    // =========================================================
+    // =========================
+    // Parsing
+    // =========================
     private static string ExtractInnerContentFromOuter(string rawOuter)
     {
         if (string.IsNullOrWhiteSpace(rawOuter)) return null;
@@ -398,9 +423,7 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
                     {
                         depth--;
                         if (depth == 0)
-                        {
                             return rawOuter.Substring(start, i - start);
-                        }
                     }
                 }
                 return null;
@@ -414,9 +437,9 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
         }
     }
 
-    // =========================================================
-    // Normalize / Validation
-    // =========================================================
+    // =========================
+    // Normalize + Validation
+    // =========================
     private DecisionResult NormalizeDecision(DecisionJson j)
     {
         var r = new DecisionResult
@@ -442,17 +465,14 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
                     r.instants.Add(le);
         }
 
-        // 数量硬裁剪
         if (r.nextFloor.Count > 4) r.nextFloor.RemoveRange(4, r.nextFloor.Count - 4);
         if (r.instants.Count > 3) r.instants.RemoveRange(3, r.instants.Count - 3);
 
         if (r.npcReply.Length > 120) r.npcReply = r.npcReply.Substring(0, 120);
 
-        // ✅ 本地兜底：万一模型仍给空 nextFloor（违约），给一个温和事件
+        // 若模型违约（nextFloor为空），给一个温和兜底事件，保证循环
         if (r.nextFloor.Count == 0)
-        {
             r.nextFloor.Add(new LayerEvent(LayerEventType.PlayerDealMoreDamage, 0.2f));
-        }
 
         return r;
     }
@@ -465,7 +485,7 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
         string name = e.eventType.Trim();
         if (name == "None") return false;
 
-        if (!Enum.TryParse<LayerEventType>(name, out var type))
+        if (!Enum.TryParse(name, out LayerEventType type))
             return false;
 
         float v = e.value;
@@ -528,9 +548,9 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
         return true;
     }
 
-    // =========================================================
-    // Fallback（保留原逻辑）
-    // =========================================================
+    // =========================
+    // Fallback builders
+    // =========================
     private DecisionResult BuildFallbackDecision(int affinity)
     {
         bool positive = affinity >= 0;
@@ -538,38 +558,69 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
         var res = new DecisionResult
         {
             isFallback = true,
-            npcReply = PickFallbackNpcReply(positive),
+            npcReply = PickDecisionFallbackReply(positive),
             affinityDelta = positive ? 1 : -1,
             nextFloor = new List<LayerEvent>(),
             instants = new List<LayerEvent>(),
             historyDelta = ""
         };
 
-        // fallback 仍保证至少一个 nextFloor
+        // 保证至少有 nextFloor 事件（维持循环）
         res.nextFloor.Add(new LayerEvent(LayerEventType.PlayerDealMoreDamage, 0.2f));
 
-        // 再随机补一点
-        res.instants.Add(new LayerEvent(positive ? LayerEventType.Heal : LayerEventType.LoseHP, positive ? 12f : 10f));
+        // 可选即时事件（温和一点）
+        res.instants.Add(new LayerEvent(
+            positive ? LayerEventType.Heal : LayerEventType.LoseHP,
+            positive ? 12f : 10f));
+
         return res;
     }
 
-    private static string PickFallbackNpcReply(bool positive)
+    private string PickDecisionFallbackReply(bool positive)
     {
+        // 1) 人格兜底（优先）
+        var p = (NPCRunPersonalityManager.Instance != null) ? NPCRunPersonalityManager.Instance.Selected : null;
+        if (p != null)
+        {
+            string s = p.GetRandomDecisionFallbackOrEmpty();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+
+        // 2) 默认兜底
         string[] pos = { "行，我记下了。下一层我会照看你一点。", "可以。别拖沓，往下走。" };
         string[] neg = { "……随你。下一层你自己扛住。", "我听到了。别后悔。" };
         var pool = positive ? pos : neg;
         return pool[UnityEngine.Random.Range(0, pool.Length)];
     }
 
-    private static string PickFallbackOpeningLine()
+    private string PickOpeningFallbackLine()
     {
-        string[] pool = { "你这次想赌什么？说清楚。", "先别急，告诉我你的打算。", "你在犹豫？那就选一个方向。" };
-        return pool[UnityEngine.Random.Range(0, pool.Length)];
+        // 1) 人格兜底（优先）
+        var p = (NPCRunPersonalityManager.Instance != null) ? NPCRunPersonalityManager.Instance.Selected : null;
+        if (p != null)
+        {
+            string s = p.GetRandomOpeningFallbackOrEmpty();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+
+        // 2) Orchestrator本地兜底（注意：不要引用 UI 的 localOpeningFallbackLine）
+        if (!string.IsNullOrWhiteSpace(orchestratorOpeningFallbackLine))
+            return orchestratorOpeningFallbackLine.Trim();
+
+        // 3) 最终兜底
+        return "……";
     }
 
-    // =========================================================
-    // Types
-    // =========================================================
+    private static string GetNpcNameSafe(NPCProfile npc)
+    {
+        return (npc != null && !string.IsNullOrWhiteSpace(npc.npcName))
+            ? npc.npcName.Trim()
+            : "NPC";
+    }
+
+    // =========================
+    // JSON shapes
+    // =========================
     [Serializable]
     private class DecisionJson
     {
@@ -593,9 +644,6 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
         public float value;
     }
 
-    // =========================================================
-    // Public result
-    // =========================================================
     public class DecisionResult
     {
         public bool isFallback;
@@ -604,43 +652,5 @@ $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出�
         public List<LayerEvent> nextFloor;
         public List<LayerEvent> instants;
         public string historyDelta;
-    }
-    
-    // =========================================================
-// 开场白：每次 UI 打开时请求（等待一次）
-// =========================================================
-    public async Task<string> RequestOpeningLineAsync(
-        int affinity,
-        string historySummary,
-        NPCProfile npc,
-        CancellationToken ct)
-    {
-        try
-        {
-            var sys = BuildOpeningSystemPrompt(npc);
-            var usr = BuildOpeningUserPrompt(affinity, historySummary);
-
-            string rawOuter = await _client.RequestJsonAsync(
-                sys, usr,
-                openingMaxTokens, openingTemperature,
-                openingTimeoutSeconds, ct);
-
-            string content = ExtractInnerContentFromOuter(rawOuter);
-            if (string.IsNullOrWhiteSpace(content))
-                throw new Exception("LLM returned empty content (opening).");
-
-            var inner = JsonUtility.FromJson<OpeningJson>(content);
-            string line = inner?.npc_opening_line;
-
-            if (string.IsNullOrWhiteSpace(line))
-                throw new Exception("Opening JSON missing npc_opening_line.");
-
-            return line.Trim();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[LLM] Opening failed -> local opening. reason={ex.Message}");
-            return PickFallbackOpeningLine();
-        }
     }
 }

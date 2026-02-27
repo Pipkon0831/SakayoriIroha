@@ -43,7 +43,6 @@ public class LayerEventApplier : MonoBehaviour
         {
             case LayerEventType.LowVision:
             {
-                // value: 0.35~1.0（倍率）
                 float m = Mathf.Clamp(e.value, 0.35f, 1f);
                 if (CameraController.Instance != null)
                     CameraController.Instance.SetOrthoSizeMultiplier(m);
@@ -52,7 +51,6 @@ public class LayerEventApplier : MonoBehaviour
 
             case LayerEventType.EnemyMoveSpeedUp:
             {
-                // value: 0.2 => 速度 * 1.2
                 float ratio = Mathf.Clamp(e.value, 0f, 3f);
                 combatSystem.enemySpeedMultiplier *= (1f + ratio);
                 break;
@@ -81,7 +79,6 @@ public class LayerEventApplier : MonoBehaviour
 
             case LayerEventType.PlayerAttackSpeedDown:
             {
-                // value: 0.2 => 攻速 * 0.8
                 float ratio = Mathf.Clamp(e.value, 0f, 0.9f);
                 combatSystem.playerAttackSpeedMultiplier *= (1f - ratio);
                 combatSystem.playerAttackSpeedMultiplier = Mathf.Max(0.25f, combatSystem.playerAttackSpeedMultiplier);
@@ -101,17 +98,9 @@ public class LayerEventApplier : MonoBehaviour
                     dungeonGenerator.SetRoomOverrideMode(RoomOverrideMode.AllRewardExceptBossAndSpawn);
                 break;
             }
-
-            // ========= 其余类型（一次性/不该出现在单层应用里） =========
-            default:
-                // 安全忽略，避免混用导致重复执行
-                break;
         }
     }
 
-    // =========================
-    // 入口 2：应用并清空一次性事件（经验/回血/永久属性加减）
-    // =========================
     public void ApplyAndConsumeInstantEvents()
     {
         if (LayerEventSystem.Instance == null) return;
@@ -131,7 +120,6 @@ public class LayerEventApplier : MonoBehaviour
 
         switch (e.eventType)
         {
-            // ========= 一次性永久事件 =========
             case LayerEventType.GainExp:
                 player.AddExp(e.value);
                 break;

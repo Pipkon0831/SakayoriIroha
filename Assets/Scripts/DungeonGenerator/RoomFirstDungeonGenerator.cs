@@ -27,7 +27,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     [Header("按房间类型配置生成规则")]
     [SerializeField] private List<RoomSpawnConfig> roomSpawnConfigs;
 
-    [Header("房间类型权重（仅怪物/奖励房）")]
+    [Header("房间类型权重")]
     [SerializeField] private int monsterRoomWeight = 70;
     [SerializeField] private int rewardRoomWeight = 20;
     [SerializeField] private int minRoomsForBoss = 5;
@@ -40,7 +40,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     [Header("生成物体父节点")]
     [SerializeField] private Transform spawnedObjectsParent;
 
-    [Header("楼层规则覆盖（由事件系统注入）")]
+    [Header("楼层规则覆盖")]
     [SerializeField] private RoomOverrideMode overrideMode = RoomOverrideMode.None;
 
     private Dictionary<RoomData, List<RoomData>> roomConnections;
@@ -151,10 +151,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
                 : RoomData.RoomType.Reward;
         }
 
-        // ✅ 覆盖规则：让事件能强制全怪物/全奖励
         ApplyOverrideModeIfNeeded();
-
-       // Debug.Log($"✅ Spawn: {bestRoomA?.center} | Boss: {bestRoomB?.center} | 最大最短距离: {maxDistance} | override: {overrideMode}");
     }
 
     private void ApplyOverrideModeIfNeeded()
@@ -216,7 +213,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
     {
         if (player == null)
         {
-            Debug.LogWarning("⚠️ 请在Inspector中拖入场景内的Player对象！");
+            Debug.LogWarning("请在Inspector中拖入场景内的Player");
             return;
         }
 
@@ -240,12 +237,11 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
             roomData.borderPositions.Add(new Vector2Int(bounds.max.x - 1, y));
     }
 
-    [ContextMenu("📌 手动放置物品和敌人")]
+    [ContextMenu("放置物品和敌人")]
     public void SpawnObjectsInRooms()
     {
         if (allRoomData.Count == 0)
         {
-            Debug.LogWarning("⚠️ 请先生成地牢，再放置物品/敌人！");
             return;
         }
 
@@ -256,7 +252,6 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
             RoomSpawnConfig config = roomSpawnConfigs.Find(c => c.roomType == room.roomType);
             if (config == null || config.spawnableObjects == null || config.spawnableObjects.Count == 0)
             {
-               // Debug.Log($"📌 房间类型 {room.roomType} 无生成配置，跳过");
                 continue;
             }
 
@@ -271,7 +266,7 @@ public class RoomFirstDungeonGenerator : AbstractDungeonGenerator
             }
         }
 
-        Debug.Log($"✅ 物品/敌人生成完成！");
+        Debug.Log($"预制体生成完成");
     }
 
     private void SpawnSingleObject(HashSet<Vector2Int> roomPositions, BoundsInt roomBounds, SpawnableObject spawnable)

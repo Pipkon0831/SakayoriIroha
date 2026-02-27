@@ -44,6 +44,13 @@ public class GameController : MonoBehaviour
         IsInCombat = false;
         isGameOver = false;
 
+        // ✅ 新开局：清空“本局对话记忆”（不展示在UI，只给LLM上下文用）
+        // 注意：如果你把 NPCRunDialogueMemory 做成 DontDestroyOnLoad，这一步很重要
+        NPCRunDialogueMemory.Instance?.ClearRunMemory();
+
+        // ✅（可选但推荐）新开局：清空开场白缓存，避免上一局预取的 opening 混到这一局
+        NPCDialogueCache.Instance?.ClearAll();
+
         // ✅ 开局确保抽取“本局人格”（只抽一次，整局固定）
         if (NPCRunPersonalityManager.Instance != null)
             NPCRunPersonalityManager.Instance.EnsurePicked();
@@ -74,6 +81,8 @@ public class GameController : MonoBehaviour
             MovePlayerToSpawnRoomCenterIfPossible();
         }
     }
+
+
 
     private void Update()
     {

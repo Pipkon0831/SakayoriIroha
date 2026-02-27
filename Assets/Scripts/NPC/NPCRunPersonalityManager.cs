@@ -1,48 +1,44 @@
-using System;
-using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "NPCPersonality_", menuName = "Thesis/NPC Personality Definition")]
-public class NPCPersonalityDefinition : ScriptableObject
+public class NPCRunPersonalityManager : MonoBehaviour
 {
-    [Header("Identity")]
-    public string personalityId = "default";
-    public string displayName = "默认";
+    public static NPCRunPersonalityManager Instance { get; private set; }
 
-    [Header("LLM Prompt Injection")]
-    [TextArea(3, 12)]
-    public string systemPromptAddon =
-        "你说话要像真人，不要重复短句，不要像系统提示。";
+    [Header("Pool (assign in Inspector)")]
+    [SerializeField] private NPCPersonalityDefinition[] personalityPool;
 
-    [TextArea(2, 8)]
-    public string openingAddon =
-        "开场白要有情绪、评价，并抛出一个具体问题引导玩家回应。禁止只说“继续/说吧”。";
+    [Header("Selected (runtime)")]
+    [SerializeField] private NPCPersonalityDefinition selected;
 
-    [TextArea(2, 10)]
-    public string decisionAddon =
-        "你需要更明确的态度与评价，并倾向给出可玩但不过分极端的事件。";
+    public NPCPersonalityDefinition Selected => selected;
 
-    [Header("Portrait (reserved)")]
-    public List<AffinityPortrait> portraits = new List<AffinityPortrait>();
+    private bool _picked;
 
-    [Serializable]
-    public class AffinityPortrait
+    private void Awake()
     {
-        public int minAffinity = -999;
-        public int maxAffinity = 999;
-        public Sprite portrait;
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
     }
 
-    public Sprite GetPortraitByAffinity(int affinity)
+    public void EnsurePicked()
     {
-        if (portraits == null || portraits.Count == 0) return null;
-        for (int i = 0; i < portraits.Count; i++)
+        if (_picked) return;
+        _picked = true;
+
+        if (personalityPool == null || personalityPool.Length == 0)
         {
-            var p = portraits[i];
-            if (p == null) continue;
-            if (affinity >= p.minAffinity && affinity <= p.maxAffinity)
-                return p.portrait;
+            Debug.LogWarning("[NPC Personality] Pool is empty. Selected = null.");
+            selected = null;
+            return;
         }
-        return null;
+
+        selected = personalityPool[Random.Range(0, personalityPool.Length)];
+        Debug.Log($"[NPC Personality] Picked: {(selected != null ? selected.displayName : "null")}");
     }
 }

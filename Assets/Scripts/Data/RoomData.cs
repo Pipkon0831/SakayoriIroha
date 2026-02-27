@@ -1,13 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// 存储房间的所有关键数据（范围、中心点、地板位置、边界等）
-/// </summary>
 [System.Serializable]
 public class RoomData
 {
-    // 房间类型枚举（内嵌）
     public enum RoomType
     {
         Spawn,      // 出生房（唯一）

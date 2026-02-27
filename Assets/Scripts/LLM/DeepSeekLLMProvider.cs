@@ -7,7 +7,6 @@ using UnityEngine.Networking;
 
 public class DeepSeekLLMProvider : ILLMClient
 {
-    // 如果遇到 404，把这个改成：https://api.deepseek.com/v1/chat/completions
     private const string URL = "https://api.deepseek.com/chat/completions";
 
     private readonly string _model;

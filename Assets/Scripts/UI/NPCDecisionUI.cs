@@ -18,7 +18,7 @@ public class NPCDecisionUI : MonoBehaviour
     [SerializeField] private TextMeshProUGUI favorText;
 
     [Header("Portrait (reserved)")]
-    [SerializeField] private Image portraitImage; // ✅ 预留：人格×好感度 立绘切换
+    [SerializeField] private Image portraitImage;
 
     [Header("Opening Line")]
     [TextArea(1, 3)]
@@ -33,7 +33,7 @@ public class NPCDecisionUI : MonoBehaviour
     [Header("Input")]
     [SerializeField] private TMP_InputField playerInput;
 
-    [Header("Button (single button: Send / Continue)")]
+    [Header("Button (single)")]
     [SerializeField] private Button actionButton;
     [SerializeField] private TextMeshProUGUI buttonLabel;
 
@@ -54,40 +54,33 @@ public class NPCDecisionUI : MonoBehaviour
 
     private enum Phase
     {
-        OpeningWaiting, // ✅ 新增：Show 后正在等开场白
-        Typing,
-        WaitingLLM,
-        Result
+        OpeningWaiting,
+        Chatting,      // ✅ 同一层可多轮聊天
+        WaitingLLM
     }
 
-    private Phase _phase = Phase.Typing;
+    private Phase _phase = Phase.Chatting;
 
-    private bool _sentThisPhase;
-    private LLMOrchestrator.DecisionResult _pendingResult;
-    private string _pendingHistorySummary;
+    // ✅ 本层“事件计划”只锁定一次（第一次决策）
+    private LLMOrchestrator.DecisionResult _lockedPlan;
+
+    // ✅ 防止连点 / 重入
+    private bool _isRequesting;
 
     private static bool s_firstOpeningUsed;
 
-    // -------------------------
-    // Public
-    // -------------------------
     public NPCProfile CurrentNPC => currentNPC;
 
-    // -------------------------
-    // Show / Hide
-    // -------------------------
     public void Show()
     {
-        // ✅ 开局确保抽人格（如果你在GameController已经调用过，这里也不会重复抽）
         if (NPCRunPersonalityManager.Instance != null)
             NPCRunPersonalityManager.Instance.EnsurePicked();
 
         if (panelRoot != null) panelRoot.SetActive(true);
         LockInput(true);
 
-        _sentThisPhase = false;
-        _pendingResult = null;
-        _pendingHistorySummary = historySummaryPlaceholder;
+        _lockedPlan = null;
+        _isRequesting = false;
 
         _cts?.Cancel();
         _cts = new CancellationTokenSource();
@@ -101,7 +94,7 @@ public class NPCDecisionUI : MonoBehaviour
         if (playerInput != null)
         {
             playerInput.text = "";
-            playerInput.interactable = false; // ✅ 等开场白出来再允许输入
+            playerInput.interactable = false;
             playerInput.onSubmit.RemoveAllListeners();
             playerInput.onEndEdit.RemoveAllListeners();
             playerInput.lineType = TMP_InputField.LineType.MultiLineNewline;
@@ -114,22 +107,8 @@ public class NPCDecisionUI : MonoBehaviour
             actionButton.onClick.AddListener(OnActionButtonClicked);
         }
 
-        // ✅ Opening line：开局第一次固定；之后每次 Show 都向 LLM 请求
-        if (!s_firstOpeningUsed)
-        {
-            s_firstOpeningUsed = true;
-            string opening = string.IsNullOrWhiteSpace(firstGameFixedOpeningLine)
-                ? localOpeningFallbackLine
-                : firstGameFixedOpeningLine;
-
-            AddMessage(npcBubblePrefab, opening);
-            EnterTypingPhase();
-        }
-        else
-        {
-            EnterOpeningWaitingPhase();
-            StartCoroutine(RequestOpeningLineAndRender());
-        }
+        EnterOpeningWaitingPhase();
+        StartCoroutine(RequestOpeningLineAndRender());
     }
 
     public void Hide()
@@ -141,22 +120,17 @@ public class NPCDecisionUI : MonoBehaviour
         LockInput(false);
     }
 
-    // -------------------------
-    // Phase
-    // -------------------------
     private void EnterOpeningWaitingPhase()
     {
         _phase = Phase.OpeningWaiting;
-
         if (playerInput != null) playerInput.interactable = false;
-
-        // 等待开场白时：按钮隐藏，避免玩家误操作
         SetButtonVisible(false);
     }
 
-    private void EnterTypingPhase()
+    private void EnterChattingPhase()
     {
-        _phase = Phase.Typing;
+        _phase = Phase.Chatting;
+
         if (playerInput != null)
         {
             playerInput.interactable = true;
@@ -164,7 +138,7 @@ public class NPCDecisionUI : MonoBehaviour
         }
 
         SetButtonVisible(true);
-        SetButtonText("发送");
+        RefreshActionButtonLabel();
         SetButtonInteractable(true);
     }
 
@@ -172,34 +146,51 @@ public class NPCDecisionUI : MonoBehaviour
     {
         _phase = Phase.WaitingLLM;
         if (playerInput != null) playerInput.interactable = false;
-
-        // 等待期间隐藏按钮
         SetButtonVisible(false);
     }
 
-    private void EnterResultPhase()
+    private void RefreshActionButtonLabel()
     {
-        _phase = Phase.Result;
-        if (playerInput != null) playerInput.interactable = false;
+        // ✅ 单按钮双语义：
+        // - 输入框有字：发送
+        // - 输入框空：下楼（如果已锁定事件计划）
+        string t = playerInput != null ? playerInput.text.Trim() : "";
+        bool hasText = !string.IsNullOrEmpty(t);
 
-        SetButtonVisible(true);
-        SetButtonText("继续");
-        SetButtonInteractable(true);
+        if (hasText)
+            SetButtonText("发送");
+        else
+            SetButtonText(_lockedPlan != null ? "下楼" : "发送");
     }
 
     private void OnActionButtonClicked()
     {
-        if (_phase == Phase.Typing) TrySend();
-        else if (_phase == Phase.Result) ApplyAndEnterNextFloor();
-        // OpeningWaiting / WaitingLLM 不响应点击
+        if (_phase != Phase.Chatting) return;
+        if (_isRequesting) return;
+
+        string t = playerInput != null ? playerInput.text.Trim() : "";
+
+        // ✅ 空输入：如果已有计划 → 直接下楼
+        if (string.IsNullOrEmpty(t))
+        {
+            if (_lockedPlan != null)
+            {
+                ApplyAndEnterNextFloor();
+            }
+            else
+            {
+                // 没有计划却空输入：不做事
+                RefreshActionButtonLabel();
+            }
+            return;
+        }
+
+        // ✅ 有输入：发送聊天
+        TrySend(t);
     }
 
-    // -------------------------
-    // Opening request (NEW)
-    // -------------------------
     private IEnumerator RequestOpeningLineAndRender()
     {
-        // 给玩家一个“在想”的反馈（你也可以换成更短的点点点）
         AddMessage(npcBubblePrefab, "……（思考中）");
 
         var task = RequestOpeningTask();
@@ -210,19 +201,18 @@ public class NPCDecisionUI : MonoBehaviour
             line = task.Result;
 
         if (string.IsNullOrWhiteSpace(line))
-            line = string.IsNullOrWhiteSpace(localOpeningFallbackLine) ? "……" : localOpeningFallbackLine;
+            line = PickOpeningFallbackLine();
 
-        // 直接再追加一条“真实开场白”
-        //（如果你想替换上一条“思考中”，也可以做引用保存并改文本，但这版最稳）
         AddMessage(npcBubblePrefab, line);
-
-        EnterTypingPhase();
+        EnterChattingPhase();
     }
 
     private async System.Threading.Tasks.Task<string> RequestOpeningTask()
     {
         int affinity = (LLMEventBridge.Instance != null) ? LLMEventBridge.Instance.Affinity : 0;
-        string historySummary = historySummaryPlaceholder;
+        string dialogueMemory = (NPCRunDialogueMemory.Instance != null)
+            ? NPCRunDialogueMemory.Instance.BuildContextForLLM()
+            : historySummaryPlaceholder;
 
         if (LLMOrchestrator.Instance == null)
         {
@@ -236,7 +226,7 @@ public class NPCDecisionUI : MonoBehaviour
         {
             return await LLMOrchestrator.Instance.RequestOpeningLineAsync(
                 affinity,
-                historySummary,
+                dialogueMemory,
                 currentNPC,
                 token);
         }
@@ -247,21 +237,21 @@ public class NPCDecisionUI : MonoBehaviour
         }
     }
 
-    // -------------------------
-    // Send
-    // -------------------------
-    private void TrySend()
+    private void TrySend(string playerText)
     {
-        if (_sentThisPhase) return;
-
-        string playerText = playerInput != null ? playerInput.text.Trim() : "";
         if (string.IsNullOrEmpty(playerText)) return;
 
-        _sentThisPhase = true;
+        _isRequesting = true;
 
         AddMessage(playerBubblePrefab, playerText);
-        EnterWaitingPhase();
 
+        if (playerInput != null)
+        {
+            playerInput.text = "";
+            playerInput.ActivateInputField();
+        }
+
+        EnterWaitingPhase();
         StartCoroutine(RequestLLMAndRender(playerText));
     }
 
@@ -275,34 +265,50 @@ public class NPCDecisionUI : MonoBehaviour
 
         if (result == null)
         {
-            AddMessage(npcBubblePrefab, "……");
-            AddSystemLine("系统：LLM异常，已跳过事件生成。（请看Console）");
-            _pendingResult = null;
-            EnterResultPhase();
+            AddMessage(npcBubblePrefab, PickDecisionFallbackLine());
+            _isRequesting = false;
+            EnterChattingPhase();
             yield break;
         }
 
+        // NPC回复
         AddMessage(npcBubblePrefab, result.npcReply);
 
-        // 系统播报（事件）
-        if (result.instants != null)
-            foreach (var e in result.instants) AddSystemLine(FormatInstantEventLine(e));
+        // ✅ 好感度即时生效：每轮聊天都有“反馈”
+        if (LLMEventBridge.Instance != null)
+            LLMEventBridge.Instance.ApplyAffinityDelta(result.affinityDelta);
 
-        if (result.nextFloor != null)
-            foreach (var e in result.nextFloor) AddSystemLine(FormatNextFloorEventLine(e));
+        SetHeader();
+        UpdatePortrait();
 
-        if (result.isFallback)
-            AddSystemLine("系统：LLM输出异常，已使用本地兜底方案。");
+        // ✅ 事件计划：只在本层第一次锁定并展示
+        if (_lockedPlan == null)
+        {
+            _lockedPlan = result;
 
-        _pendingResult = result;
+            if (_lockedPlan.instants != null)
+                foreach (var e in _lockedPlan.instants) AddSystemLine(FormatInstantEventLine(e));
 
-        EnterResultPhase();
+            if (_lockedPlan.nextFloor != null)
+                foreach (var e in _lockedPlan.nextFloor) AddSystemLine(FormatNextFloorEventLine(e));
+        }
+        else
+        {
+            // 后续聊天：不再播报/覆盖事件，保持“本层计划”稳定
+            // 你也可以在这里偶尔提示：AddSystemLine("系统：本层事件计划已锁定。");
+        }
+
+        _isRequesting = false;
+        EnterChattingPhase();
     }
 
     private async System.Threading.Tasks.Task<LLMOrchestrator.DecisionResult> RequestDecisionTask(string playerText)
     {
         int affinity = (LLMEventBridge.Instance != null) ? LLMEventBridge.Instance.Affinity : 0;
-        string historySummary = historySummaryPlaceholder;
+
+        string dialogueMemory = (NPCRunDialogueMemory.Instance != null)
+            ? NPCRunDialogueMemory.Instance.BuildContextForLLM()
+            : historySummaryPlaceholder;
 
         if (LLMOrchestrator.Instance == null)
         {
@@ -317,7 +323,7 @@ public class NPCDecisionUI : MonoBehaviour
             return await LLMOrchestrator.Instance.RequestDecisionAsync(
                 playerText,
                 affinity,
-                historySummary,
+                dialogueMemory,
                 currentNPC,
                 token);
         }
@@ -328,32 +334,20 @@ public class NPCDecisionUI : MonoBehaviour
         }
     }
 
-    // -------------------------
-    // Continue -> Apply -> Next floor
-    // -------------------------
     private void ApplyAndEnterNextFloor()
     {
         SetButtonInteractable(false);
 
-        // 1) 写入事件系统 + 好感度（此时才真正生效）
-        if (_pendingResult != null)
+        if (_lockedPlan != null)
         {
-            WriteToLayerEventSystem(_pendingResult.nextFloor ?? new List<LayerEvent>(),
-                                    _pendingResult.instants ?? new List<LayerEvent>());
-
-            if (LLMEventBridge.Instance != null)
-                LLMEventBridge.Instance.ApplyAffinityDelta(_pendingResult.affinityDelta);
+            WriteToLayerEventSystem(_lockedPlan.nextFloor ?? new List<LayerEvent>(),
+                                    _lockedPlan.instants ?? new List<LayerEvent>());
         }
 
-        SetHeader();
-        UpdatePortrait();
-
-        // 2) 执行即时事件
         var applier = FindFirstObjectByType<LayerEventApplier>();
         if (applier != null)
             applier.ApplyAndConsumeInstantEvents();
 
-        // 3) 进入下一层
         var gc = FindFirstObjectByType<GameController>();
         if (gc != null)
         {
@@ -367,8 +361,6 @@ public class NPCDecisionUI : MonoBehaviour
             SetButtonInteractable(true);
             return;
         }
-
-        // ✅ 删除：不再 PrefetchOpeningLineAsync（你要求每次 Show 再请求）
     }
 
     private void WriteToLayerEventSystem(List<LayerEvent> nextFloor, List<LayerEvent> instants)
@@ -447,9 +439,6 @@ public class NPCDecisionUI : MonoBehaviour
         }
     }
 
-    // -------------------------
-    // Layout: prevent overlap
-    // -------------------------
     private void EnsureChatLayout()
     {
         if (chatContent == null) return;
@@ -471,7 +460,22 @@ public class NPCDecisionUI : MonoBehaviour
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
     }
 
-    private void AddMessage(GameObject prefab, string text) => AddRow(prefab, text);
+    private void AddMessage(GameObject prefab, string text)
+    {
+        AddRow(prefab, text);
+
+        if (NPCRunDialogueMemory.Instance == null) return;
+
+        int floor = 0;
+        var gc = FindFirstObjectByType<GameController>();
+        if (gc != null) floor = gc.CurrentFloorIndex;
+
+        if (prefab == playerBubblePrefab)
+            NPCRunDialogueMemory.Instance.AddPlayerLine(text, floor);
+        else if (prefab == npcBubblePrefab)
+            NPCRunDialogueMemory.Instance.AddNpcLine(text, floor);
+    }
+
     private void AddSystemLine(string text) => AddRow(effectLinePrefab, text);
 
     private void AddRow(GameObject prefab, string text)
@@ -525,6 +529,36 @@ public class NPCDecisionUI : MonoBehaviour
     private void SetButtonText(string text)
     {
         if (buttonLabel != null) buttonLabel.text = text;
+    }
+
+    // -------------------------
+    // Fallbacks
+    // -------------------------
+    private string PickOpeningFallbackLine()
+    {
+        var p = (NPCRunPersonalityManager.Instance != null) ? NPCRunPersonalityManager.Instance.Selected : null;
+        if (p != null)
+        {
+            string s = p.GetRandomOpeningFallbackOrEmpty();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+
+        if (!string.IsNullOrWhiteSpace(localOpeningFallbackLine))
+            return localOpeningFallbackLine.Trim();
+
+        return "……";
+    }
+
+    private string PickDecisionFallbackLine()
+    {
+        var p = (NPCRunPersonalityManager.Instance != null) ? NPCRunPersonalityManager.Instance.Selected : null;
+        if (p != null)
+        {
+            string s = p.GetRandomDecisionFallbackOrEmpty();
+            if (!string.IsNullOrWhiteSpace(s)) return s;
+        }
+
+        return "……";
     }
 
     // -------------------------

@@ -7,11 +7,11 @@ public class CombatModifierSystem : MonoBehaviour
     [Header("Player倍率（单层事件用）")]
     public float playerDamageMultiplier = 1f;        // 玩家造成伤害倍率
     public float playerReceiveDamageMultiplier = 1f; // 玩家受伤倍率
-    public float playerAttackSpeedMultiplier = 1f;   // 玩家攻速倍率（>1 更快）
-    public float playerMoveSpeedMultiplier = 1f;     // 玩家移速倍率（预留）
+    public float playerAttackSpeedMultiplier = 1f;   // 玩家攻速倍率
+    public float playerMoveSpeedMultiplier = 1f;     // 玩家移速倍率
 
     [Header("Enemy倍率（单层事件用）")]
-    public float enemySpeedMultiplier = 1f;          // 敌人移速倍率（>1 更快）
+    public float enemySpeedMultiplier = 1f;          // 敌人移速倍率
 
     private void Awake()
     {

@@ -11,7 +11,6 @@ public class NPCDialogueCache : MonoBehaviour
     // npcName -> last opening（用于“避免复读”）
     private readonly Dictionary<string, string> _lastOpeningByNpc = new Dictionary<string, string>();
 
-    // ✅ 新增：npcName -> latest prefetched opening（不消费，用作兜底覆盖 localOpeningFallbackLine）
     private readonly Dictionary<string, string> _latestPrefetchedByNpc = new Dictionary<string, string>();
 
     public bool HasPrefetchedOpening => _openingByNpc.Count > 0;
@@ -23,14 +22,12 @@ public class NPCDialogueCache : MonoBehaviour
         DontDestroyOnLoad(gameObject);
     }
 
-    // ✅ 新增：判断某个 npc 是否已有可 Consume 的 opening
     public bool HasOpeningFor(string npcName)
     {
         npcName = NormalizeName(npcName);
         return _openingByNpc.ContainsKey(npcName);
     }
 
-    // ✅ 新增：取“最新预取文本”（不消费，不删除）
     public string PeekLatestPrefetchedOrEmpty(string npcName)
     {
         npcName = NormalizeName(npcName);
@@ -45,7 +42,6 @@ public class NPCDialogueCache : MonoBehaviour
 
         _openingByNpc[npcName] = line;
 
-        // ✅ 同步写一份“最新预取”（不消费版本）
         _latestPrefetchedByNpc[npcName] = line;
 
         Debug.Log($"[NPCDialogueCache] SetOpening npc={npcName}, line={line}");

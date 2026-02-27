@@ -13,17 +13,14 @@ public static class LLMChatUIBuilder
     [MenuItem("Tools/Thesis/Build LLM Chat UI Canvas (NoFont)")]
     public static void Build()
     {
-        // 0) Delete old canvas if exists
         var oldCanvas = GameObject.Find(CANVAS_NAME);
         if (oldCanvas != null)
         {
             Object.DestroyImmediate(oldCanvas);
         }
 
-        // 1) Ensure EventSystem
         EnsureEventSystem();
 
-        // 2) Create Canvas
         var canvasGO = new GameObject(CANVAS_NAME, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         Undo.RegisterCreatedObjectUndo(canvasGO, "Create LLM Chat Canvas (NoFont)");
 
@@ -36,15 +33,12 @@ public static class LLMChatUIBuilder
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
 
-        // 3) Root
         var uiRoot = CreateUIRect("UIRoot", canvasGO.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
 
-        // 4) LeftPortraitRoot (0 ~ 0.45)
         var leftRoot = CreateUIRect("LeftPortraitRoot", uiRoot.transform,
             new Vector2(0f, 0f), new Vector2(0.45f, 1f),
             Vector2.zero, Vector2.zero);
 
-        // NPCPortrait (Image)
         var portraitGO = new GameObject("NPCPortrait", typeof(RectTransform), typeof(Image));
         portraitGO.transform.SetParent(leftRoot.transform, false);
         var portraitRT = portraitGO.GetComponent<RectTransform>();
@@ -57,18 +51,14 @@ public static class LLMChatUIBuilder
         var portraitImg = portraitGO.GetComponent<Image>();
         portraitImg.raycastTarget = false;
         portraitImg.preserveAspect = true;
-        // sprite 留空
 
-        // 5) RightChatRoot (0.45 ~ 1)
         var rightRoot = CreateUIRect("RightChatRoot", uiRoot.transform,
             new Vector2(0.45f, 0f), new Vector2(1f, 1f),
             Vector2.zero, Vector2.zero);
 
-        // Optional background (simple dark panel)
         var rightBg = AddImagePanel(rightRoot, "RightBG", new Color(0f, 0f, 0f, 0.35f));
         rightBg.raycastTarget = false;
 
-        // 6) HeaderBar (top area) - only placeholders, no text/font set
         var header = CreateUIRect("HeaderBar", rightRoot.transform,
             new Vector2(0f, 0.88f), new Vector2(1f, 1f),
             new Vector2(24, 12), new Vector2(-24, -12));
@@ -77,8 +67,6 @@ public static class LLMChatUIBuilder
         headerImg.color = new Color(0f, 0f, 0f, 0.25f);
         headerImg.raycastTarget = false;
 
-        // Use manual positioning (no LayoutGroup) to avoid later surprises.
-        // NPCNameText (left)
         var npcName = CreateTMPText_NoFont("NPCNameText", header.transform);
         {
             var rt = npcName.GetComponent<RectTransform>();
@@ -90,7 +78,6 @@ public static class LLMChatUIBuilder
             npcName.fontSize = 44;
         }
 
-        // FavorText (right)
         var favor = CreateTMPText_NoFont("FavorText", header.transform);
         {
             var rt = favor.GetComponent<RectTransform>();
@@ -102,14 +89,12 @@ public static class LLMChatUIBuilder
             favor.fontSize = 30;
         }
 
-        // 7) ChatScrollView (middle)
         var scrollRoot = CreateUIRect("ChatScrollView", rightRoot.transform,
             new Vector2(0f, 0.22f), new Vector2(1f, 0.88f),
             new Vector2(24, 12), new Vector2(-24, -12));
 
         BuildScrollView(scrollRoot);
 
-        // 8) InputBar (bottom, only right half) - NO HorizontalLayoutGroup
         var inputBar = CreateUIRect("InputBar", rightRoot.transform,
             new Vector2(0f, 0f), new Vector2(1f, 0.22f),
             new Vector2(24, 12), new Vector2(-24, -12));
@@ -118,14 +103,12 @@ public static class LLMChatUIBuilder
         inputBarImg.color = new Color(0f, 0f, 0f, 0.25f);
         inputBarImg.raycastTarget = false;
 
-        // InputBG fills entire InputBar
         var inputBG = CreateUIRect("InputBG", inputBar.transform,
             Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
         var inputBGImg = inputBG.gameObject.AddComponent<Image>();
         inputBGImg.color = new Color(0f, 0f, 0f, 0.35f);
         inputBGImg.raycastTarget = true;
 
-        // SendButton fixed at bottom-right corner, smaller
         var sendBtnGO = new GameObject("SendButton", typeof(RectTransform), typeof(Image), typeof(Button));
         sendBtnGO.transform.SetParent(inputBar.transform, false);
         var sendRT = sendBtnGO.GetComponent<RectTransform>();
@@ -141,7 +124,6 @@ public static class LLMChatUIBuilder
         var sendBtn = sendBtnGO.GetComponent<Button>();
         sendBtn.targetGraphic = sendImg;
 
-        // SendText placeholder (NO text, NO font assignment)
         var sendText = CreateTMPText_NoFont("SendText", sendBtnGO.transform);
         {
             var rt = sendText.GetComponent<RectTransform>();
@@ -153,20 +135,12 @@ public static class LLMChatUIBuilder
             sendText.fontSize = 30;
         }
 
-        // TMP_InputField (multi-line) inside InputBG
         var inputField = CreateTMPInputField_NoFont(inputBG.transform, "PlayerInput");
 
-        // Leave space for the bottom-right send button:
-        // Text Area offsets: left 18, right 180, top 18, bottom 18 (right bigger to avoid overlap)
         ConfigureMultilineInput_NoFont(inputField, fontSize: 28, textAreaRightPadding: 180);
 
-        // 9) Select canvas
         Selection.activeGameObject = canvasGO;
-
-        Debug.Log("✅ 生成完成：按钮已缩小并固定右下角；所有Text未设置字体/文字。你可自行在Inspector里设置。");
     }
-
-    // ---------------- Helpers ----------------
 
     private static void EnsureEventSystem()
     {
@@ -208,15 +182,13 @@ public static class LLMChatUIBuilder
         return img;
     }
 
-    // TMP text with NO font assignment and NO text content
     private static TextMeshProUGUI CreateTMPText_NoFont(string name, Transform parent)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
         go.transform.SetParent(parent, false);
 
         var tmp = go.GetComponent<TextMeshProUGUI>();
-        tmp.text = "";                 // no text
-        // tmp.font = null;            // keep default (do NOT touch)
+        tmp.text = "";
         tmp.raycastTarget = false;
         tmp.enableWordWrapping = false;
         tmp.color = new Color(1f, 1f, 1f, 0.92f);
@@ -275,7 +247,6 @@ public static class LLMChatUIBuilder
         scrollRect.content = contentRT;
     }
 
-    // TMP_InputField with NO font assignment and NO placeholder text
     private static TMP_InputField CreateTMPInputField_NoFont(Transform parent, string name)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(TMP_InputField));
@@ -290,7 +261,6 @@ public static class LLMChatUIBuilder
         var bg = go.GetComponent<Image>();
         bg.color = new Color(0f, 0f, 0f, 0.25f);
 
-        // Text Area
         var textArea = new GameObject("Text Area", typeof(RectTransform), typeof(RectMask2D));
         textArea.transform.SetParent(go.transform, false);
         var taRT = textArea.GetComponent<RectTransform>();
@@ -299,7 +269,6 @@ public static class LLMChatUIBuilder
         taRT.offsetMin = new Vector2(18, 18);
         taRT.offsetMax = new Vector2(-18, -18);
 
-        // Placeholder
         var placeholderGO = new GameObject("Placeholder", typeof(RectTransform), typeof(TextMeshProUGUI));
         placeholderGO.transform.SetParent(textArea.transform, false);
         var phRT = placeholderGO.GetComponent<RectTransform>();
@@ -315,7 +284,6 @@ public static class LLMChatUIBuilder
         placeholderTMP.color = new Color(1f, 1f, 1f, 0.35f);
         placeholderTMP.alignment = TextAlignmentOptions.TopLeft;
 
-        // Text
         var textGO = new GameObject("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         textGO.transform.SetParent(textArea.transform, false);
         var textRT = textGO.GetComponent<RectTransform>();
@@ -361,8 +329,6 @@ public static class LLMChatUIBuilder
             ph.alignment = TextAlignmentOptions.TopLeft;
         }
 
-        // Increase right padding so text doesn't go under the send button
-        // by expanding Text Area's right inset.
         if (input.textViewport != null)
         {
             var ta = input.textViewport;

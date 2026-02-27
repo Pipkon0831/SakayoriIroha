@@ -43,14 +43,14 @@ public static class LLMChatPrefabBuilder_NoFont
         bubbleBG.transform.SetParent(root.transform, false);
 
         var bgRT = bubbleBG.GetComponent<RectTransform>();
-        bgRT.anchorMin = new Vector2(0, 1); // top-left inside row
+        bgRT.anchorMin = new Vector2(0, 1);
         bgRT.anchorMax = new Vector2(0, 1);
         bgRT.pivot = new Vector2(0, 1);
         bgRT.anchoredPosition = Vector2.zero;
-        bgRT.sizeDelta = new Vector2(520, 120); // initial; will expand by fitter
+        bgRT.sizeDelta = new Vector2(520, 120); 
 
         var bgImg = bubbleBG.GetComponent<Image>();
-        bgImg.color = new Color(1f, 1f, 1f, 0.12f); // placeholder; you will replace with pixel 9-slice
+        bgImg.color = new Color(1f, 1f, 1f, 0.12f);
         bgImg.raycastTarget = false;
 
         var bgLE = bubbleBG.GetComponent<LayoutElement>();
@@ -83,7 +83,6 @@ public static class LLMChatPrefabBuilder_NoFont
         SavePrefab(root, savePath);
     }
 
-    // ---------------- Prefab 2: PlayerBubble (Right) ----------------
     private static void BuildPlayerBubble(string savePath)
     {
         var root = NewUI("PlayerBubble", typeof(RectTransform), typeof(LayoutElement));
@@ -96,7 +95,6 @@ public static class LLMChatPrefabBuilder_NoFont
         var rootLE = root.GetComponent<LayoutElement>();
         rootLE.flexibleWidth = 1;
 
-        // AlignRight container
         var align = NewUI("AlignRight", typeof(RectTransform), typeof(HorizontalLayoutGroup));
         align.transform.SetParent(root.transform, false);
 
@@ -112,7 +110,7 @@ public static class LLMChatPrefabBuilder_NoFont
         hlg.spacing = 0;
         hlg.childControlWidth = true;
         hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = true;  // make the align container take full row width
+        hlg.childForceExpandWidth = true; 
         hlg.childForceExpandHeight = false;
 
         // BubbleBG
@@ -123,7 +121,7 @@ public static class LLMChatPrefabBuilder_NoFont
         bgRT.pivot = new Vector2(1, 1);
 
         var bgImg = bubbleBG.GetComponent<Image>();
-        bgImg.color = new Color(0.16f, 0.45f, 0.9f, 0.18f); // placeholder
+        bgImg.color = new Color(0.16f, 0.45f, 0.9f, 0.18f);
         bgImg.raycastTarget = false;
 
         var bgLE = bubbleBG.GetComponent<LayoutElement>();
@@ -134,7 +132,6 @@ public static class LLMChatPrefabBuilder_NoFont
         csf.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        // Text
         var txtGO = NewUI("Text", typeof(RectTransform), typeof(TextMeshProUGUI));
         txtGO.transform.SetParent(bubbleBG.transform, false);
 
@@ -145,7 +142,7 @@ public static class LLMChatPrefabBuilder_NoFont
         txtRT.offsetMax = new Vector2(-16, -12);
 
         var tmp = txtGO.GetComponent<TextMeshProUGUI>();
-        tmp.text = ""; // NO text
+        tmp.text = ""; 
         tmp.raycastTarget = false;
         tmp.enableWordWrapping = true;
         tmp.overflowMode = TextOverflowModes.Overflow;
@@ -156,7 +153,6 @@ public static class LLMChatPrefabBuilder_NoFont
         SavePrefab(root, savePath);
     }
 
-    // ---------------- Prefab 3: EffectLine (Center small text, no bubble) ----------------
     private static void BuildEffectLine(string savePath)
     {
         var root = NewUI("EffectLine", typeof(RectTransform), typeof(LayoutElement));
@@ -180,7 +176,7 @@ public static class LLMChatPrefabBuilder_NoFont
         txtRT.offsetMax = new Vector2(-12, -2);
 
         var tmp = txtGO.GetComponent<TextMeshProUGUI>();
-        tmp.text = ""; // NO text
+        tmp.text = ""; 
         tmp.raycastTarget = false;
         tmp.enableWordWrapping = true;
         tmp.overflowMode = TextOverflowModes.Overflow;
@@ -191,7 +187,6 @@ public static class LLMChatPrefabBuilder_NoFont
         SavePrefab(root, savePath);
     }
 
-    // ---------------- Utils ----------------
     private static GameObject NewUI(string name, params System.Type[] components)
     {
         var go = new GameObject(name, components);
@@ -208,7 +203,6 @@ public static class LLMChatPrefabBuilder_NoFont
     {
         if (AssetDatabase.IsValidFolder(dir)) return;
 
-        // Create nested dirs safely
         var parts = dir.Split('/');
         var current = parts[0];
         for (int i = 1; i < parts.Length; i++)
@@ -224,13 +218,6 @@ public static class LLMChatPrefabBuilder_NoFont
 
     private static void SavePrefab(GameObject root, string savePath)
     {
-        // If exists, overwrite
-        var existing = AssetDatabase.LoadAssetAtPath<GameObject>(savePath);
-        if (existing != null)
-        {
-            // SaveAsPrefabAsset will overwrite the file at the same path
-        }
-
         PrefabUtility.SaveAsPrefabAsset(root, savePath);
         Object.DestroyImmediate(root);
     }
