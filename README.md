@@ -139,6 +139,7 @@ setx DEEPSEEK_API_KEY "your_api_key_here"
 - 26/2/24：实现完整怪物AI逻辑（闲置游走、追击、攻击、分离）；完善游戏生命周期（玩家死亡判定、暂停、死亡UI）；新增LLM接入底层核心系统（CombatModifierSystem/LayerEventSystem等），区分临时/长期事件类型，完成事件与战斗数值的联动映射，为LLM接入奠定架构基础。
 - 26/2/25：完成全部事件接口构建与 JSON 模拟 LLM 输入系统；实现三层事件结构；完成多层连续测试。
 - 26/2/27：完成 LLM 真实联网接入（DeepSeek JSON Object 输出）与调用抽象层（ApiKeyProvider/ILLMClient/Provider）；实现 LLMOrchestrator 业务编排（Decision JSON + Opening Line）；重构 NPCDecisionUI 状态机（OpeningWaiting/Typing/Waiting/Result），确定“开局固定首句、后续每次打开 UI 请求开场白”的稳定策略；引入本局人格系统（ScriptableObject 池随机抽取，整局固定）并支持 Prompt 注入，预留人格×好感度立绘切换能力。
+- 26/3/2: 扩展武器强化类型结构，在奖励层新增强化道具投放逻辑，并将武器强化事件整合至NPC事件系统以增强系统联动性。
 
 
 ---
@@ -286,6 +287,8 @@ setx DEEPSEEK_API_KEY "your_api_key_here"
   LLMOrchestrator にて Decision JSON と Opening Line を分離した業務編成ロジックを実装。  
   NPCDecisionUI の状態機械（OpeningWaiting / Typing / WaitingLLM / Result）を再設計し、「初回は固定発話、それ以降は対話UI表示時にLLMへ開場発話を要求する」安定戦略へ移行。  
   本局人格システム（ScriptableObject プールからランダム抽出、セッション中固定）を導入し、Prompt 注入に対応。人格 × 好感度による立ち絵切替インターフェースを予約実装。
+- 26/3/2: 武器強化タイプ構造を拡張し、報酬階層に強化アイテム配置ロジックを追加するとともに、武器強化関連イベントをNPCイベントシステムへ統合した。
+
 
 
 ---
