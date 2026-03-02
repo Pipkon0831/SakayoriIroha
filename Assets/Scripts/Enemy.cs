@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class Enemy : MonoBehaviour
 {
-    [Header("敌人配置")]
+    [Header("敌人配置（这些数值视为“基础值”，运行时会按层数倍率增强）")]
     [SerializeField] private float maxHP = 50f;
     [SerializeField] private float expReward = 20f;
     [SerializeField] private float attackDamage = 10f;
@@ -41,17 +41,38 @@ public class Enemy : MonoBehaviour
     // 标记是否已死亡，防止重复触发死亡逻辑
     private bool isDead = false;
 
+    // ✅ 记录“基础值”（Inspector 里填的原始数值）
+    private float baseMaxHP;
+    private float baseAttackDamage;
+
     private void Awake()
     {
-        currentHP = maxHP;
+        // 先缓存基础值（Prefab/Inspector里填的原始数值）
+        baseMaxHP = maxHP;
+        baseAttackDamage = attackDamage;
+
         player = FindObjectOfType<PlayerController>();
         gameController = FindObjectOfType<GameController>();
+
+        // ✅ 按层倍率应用（拿不到 GC 就退化为 1.0）
+        float mult = 1f;
+        if (gameController != null)
+        {
+            mult = gameController.EnemyStatMultiplier;
+        }
+
+        maxHP = baseMaxHP * mult;
+        attackDamage = baseAttackDamage * mult;
+
+        // 用“实际 maxHP”初始化当前血量
+        currentHP = maxHP;
 
         lastAttackTime = -attackCooldown;
         currentState = EnemyState.Idle;
 
         rb = GetComponent<Rigidbody2D>();
         if (rb == null) rb = gameObject.AddComponent<Rigidbody2D>();
+
         col = GetComponent<Collider2D>();
         if (col == null) col = gameObject.AddComponent<CircleCollider2D>();
 
@@ -64,9 +85,14 @@ public class Enemy : MonoBehaviour
         idleTargetPos = transform.position;
 
         playerLayer = LayerMask.GetMask("Player");
-        playerContactFilter = new ContactFilter2D();
-        playerContactFilter.layerMask = playerLayer;
-        playerContactFilter.useTriggers = false;
+        playerContactFilter = new ContactFilter2D
+        {
+            layerMask = playerLayer,
+            useTriggers = false
+        };
+
+        // （可选）调试：确认倍率生效
+        // Debug.Log($"[EnemyScale] {name} Floor={gameController?.CurrentFloorIndex ?? -1}, mult={mult:F2}, HP={maxHP:F1}, ATK={attackDamage:F1}");
     }
 
     private void Start()
@@ -203,7 +229,9 @@ public class Enemy : MonoBehaviour
         Collider2D[] hitColliders = new Collider2D[1];
         int hitCount = Physics2D.OverlapCircle(transform.position, attackCheckRadius, playerContactFilter, hitColliders);
 
-        return hitCount > 0 && hitColliders[0] != null && hitColliders[0].GetComponent<PlayerController>() == player;
+        return hitCount > 0
+               && hitColliders[0] != null
+               && hitColliders[0].GetComponent<PlayerController>() == player;
     }
     #endregion
 
@@ -258,13 +286,14 @@ public class Enemy : MonoBehaviour
 
         if (Time.fixedTime - lastAttackTime >= attackCooldown)
         {
-            Debug.Log($"[怪物攻击] 扣血{attackDamage}，玩家当前血量：{player.CurrentHP}");
             float finalDamage = attackDamage;
 
             if (CombatModifierSystem.Instance != null)
             {
                 finalDamage *= CombatModifierSystem.Instance.playerReceiveDamageMultiplier;
             }
+
+            Debug.Log($"[怪物攻击] 扣血{finalDamage}（基础ATK={attackDamage}），玩家当前血量：{player.CurrentHP}");
 
             player.TakeDamage(finalDamage);
             lastAttackTime = Time.fixedTime;

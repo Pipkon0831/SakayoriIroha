@@ -98,6 +98,9 @@ public class NPCDecisionUI : MonoBehaviour
             playerInput.onSubmit.RemoveAllListeners();
             playerInput.onEndEdit.RemoveAllListeners();
             playerInput.lineType = TMP_InputField.LineType.MultiLineNewline;
+            
+            playerInput.onValueChanged.AddListener(_ => RefreshActionButtonLabel());
+
         }
 
         // Button
@@ -611,6 +614,35 @@ public class NPCDecisionUI : MonoBehaviour
                 return $"系统：即时 攻击 +{Mathf.RoundToInt(e.value)}";
             case LayerEventType.PlayerAttackDown:
                 return $"系统：即时 攻击 -{Mathf.RoundToInt(e.value)}";
+
+            // =========================
+            // 武器即时永久事件（新增）
+            // =========================
+            case LayerEventType.WeaponPenetrationUp:
+            {
+                // value 可能为 0（表示默认+1），显示时友好一点
+                int add = (e.value <= 0f) ? 1 : Mathf.RoundToInt(e.value);
+                return $"系统：即时 武器强化：穿透 +{add}";
+            }
+
+            case LayerEventType.WeaponExtraProjectileUp:
+            {
+                int add = (e.value <= 0f) ? 1 : Mathf.RoundToInt(e.value);
+                return $"系统：即时 武器强化：额外子弹 +{add}";
+            }
+
+            case LayerEventType.WeaponBulletSizeUp:
+            {
+                float mul = (e.value <= 0.01f) ? 1.2f : e.value;
+                return $"系统：即时 武器强化：子弹体积 ×{mul:0.##}";
+            }
+
+            case LayerEventType.WeaponExplosionOnHit:
+            {
+                float radius = (e.value <= 0.01f) ? 1.5f : e.value;
+                return $"系统：即时 武器强化：命中爆炸（半径 {radius:0.##}）";
+            }
+
             default:
                 return $"系统：即时效果 {e.eventType} ({e.value})";
         }

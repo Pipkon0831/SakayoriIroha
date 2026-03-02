@@ -377,6 +377,16 @@ public class GameController : MonoBehaviour
     {
         MovePlayerToSpawnRoomCenterIfPossible();
     }
+    
+    public float EnemyStatMultiplier
+    {
+        get
+        {
+            // 第1层倍率=1.0；第2层=1.1；第3层=1.21……
+            int floor = Mathf.Max(1, CurrentFloorIndex);
+            return Mathf.Pow(1.1f, floor - 1);
+        }
+    }
 
 
 }

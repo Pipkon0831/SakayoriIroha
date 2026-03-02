@@ -16,7 +16,7 @@ public class NPCPersonalityDefinition : ScriptableObject
 
     [TextArea(2, 8)]
     public string openingAddon =
-        "开场白要有情绪、评价，并抛出一个具体问题引导玩家回应。禁止只说“继续/说吧”。";
+        "开场白要有情绪、评价，并抛出一个具体话题引导玩家回应。禁止只说“继续/说吧”。";
 
     [TextArea(2, 10)]
     public string decisionAddon =

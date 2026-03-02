@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53f943b47a558f84d8080c7efc110f52, type: 3}
+  m_Name: RewardPoolSO
+  m_EditorClassIdentifier: 
+  entries:
+  - upgrade: {fileID: 11400000, guid: fd0f53a9aa841ac42956cc3edf390f1e, type: 2}
+    weight: 0.5
+  - upgrade: {fileID: 11400000, guid: d8d77b208fcba504191357eb86bab525, type: 2}
+    weight: 1.2
+  - upgrade: {fileID: 11400000, guid: 6bf3070e4b7934d45a17db2532496e43, type: 2}
+    weight: 1
+  - upgrade: {fileID: 11400000, guid: 57cfa69e8f9e501419a65759a14ea082, type: 2}
+    weight: 1

@@ -115,39 +115,95 @@ public class LayerEventApplier : MonoBehaviour
     }
 
     private void ApplyInstantEvent(LayerEvent e)
+{
+    if (player == null) return;
+
+    switch (e.eventType)
     {
-        if (player == null) return;
+        case LayerEventType.GainExp:
+            player.AddExp(e.value);
+            break;
 
-        switch (e.eventType)
+        case LayerEventType.Heal:
+            player.HealHP(e.value);
+            break;
+
+        case LayerEventType.LoseHP:
+            player.TakeDamageDirect(e.value);
+            break;
+
+        case LayerEventType.PlayerMaxHPUp:
+            player.AddMaxHP(e.value);
+            break;
+
+        case LayerEventType.PlayerMaxHPDown:
+            player.AddMaxHP(-e.value);
+            break;
+
+        case LayerEventType.PlayerAttackUp:
+            player.AddAttack(e.value);
+            break;
+
+        case LayerEventType.PlayerAttackDown:
+            player.AddAttack(-e.value);
+            break;
+
+        // =========================
+        // 武器提升（即时永久）
+        // =========================
+        case LayerEventType.WeaponPenetrationUp:
         {
-            case LayerEventType.GainExp:
-                player.AddExp(e.value);
-                break;
+            var ws = player.GetComponent<WeaponUpgradeState>();
+            if (ws == null) ws = player.gameObject.AddComponent<WeaponUpgradeState>();
 
-            case LayerEventType.Heal:
-                player.HealHP(e.value);
-                break;
+            // e.value：如果LLM给0，就按+1；如果给>=1，就按该数值取整
+            int add = (e.value <= 0f) ? 1 : Mathf.RoundToInt(e.value);
+            ws.AddPenetration(add);
 
-            case LayerEventType.LoseHP:
-                player.TakeDamageDirect(e.value);
-                break;
+            // 可选上限（防炸）
+            ws.Mods.penetrateCount = Mathf.Min(ws.Mods.penetrateCount, 5);
+            break;
+        }
 
-            case LayerEventType.PlayerMaxHPUp:
-                player.AddMaxHP(e.value);
-                break;
+        case LayerEventType.WeaponExtraProjectileUp:
+        {
+            var ws = player.GetComponent<WeaponUpgradeState>();
+            if (ws == null) ws = player.gameObject.AddComponent<WeaponUpgradeState>();
 
-            case LayerEventType.PlayerMaxHPDown:
-                player.AddMaxHP(-e.value);
-                break;
+            int add = (e.value <= 0f) ? 1 : Mathf.RoundToInt(e.value);
+            ws.AddExtraProjectiles(add);
 
-            case LayerEventType.PlayerAttackUp:
-                player.AddAttack(e.value);
-                break;
+            ws.Mods.extraProjectiles = Mathf.Min(ws.Mods.extraProjectiles, 6);
+            break;
+        }
 
-            case LayerEventType.PlayerAttackDown:
-                player.AddAttack(-e.value);
-                break;
+        case LayerEventType.WeaponBulletSizeUp:
+        {
+            var ws = player.GetComponent<WeaponUpgradeState>();
+            if (ws == null) ws = player.gameObject.AddComponent<WeaponUpgradeState>();
 
+            // e.value：倍率。若没给/给0，则默认1.2
+            float mul = (e.value <= 0.01f) ? 1.2f : Mathf.Clamp(e.value, 1.05f, 2.0f);
+            ws.MultiplyBulletSize(mul);
+
+            ws.Mods.bulletSizeMultiplier = Mathf.Min(ws.Mods.bulletSizeMultiplier, 3f);
+            break;
+        }
+
+        case LayerEventType.WeaponExplosionOnHit:
+        {
+            var ws = player.GetComponent<WeaponUpgradeState>();
+            if (ws == null) ws = player.gameObject.AddComponent<WeaponUpgradeState>();
+
+            // e.value：这里用作半径；如果没给就默认1.5
+            float radius = (e.value <= 0.01f) ? 1.5f : Mathf.Clamp(e.value, 0.8f, 3.0f);
+
+            // 爆炸开关型：重复抽到不叠加（避免数值失控）
+            if (!ws.Mods.explodeOnHit)
+                ws.EnableExplosion(radius, 0.6f);
+
+            break;
         }
     }
+}
 }
