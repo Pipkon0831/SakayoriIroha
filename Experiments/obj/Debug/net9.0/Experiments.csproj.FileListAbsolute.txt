@@ -1,0 +1,15 @@
+E:\SakayoriIroha\Experiments\bin\Debug\net9.0\Experiments.exe
+E:\SakayoriIroha\Experiments\bin\Debug\net9.0\Experiments.deps.json
+E:\SakayoriIroha\Experiments\bin\Debug\net9.0\Experiments.runtimeconfig.json
+E:\SakayoriIroha\Experiments\bin\Debug\net9.0\Experiments.dll
+E:\SakayoriIroha\Experiments\bin\Debug\net9.0\Experiments.pdb
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.GeneratedMSBuildEditorConfig.editorconfig
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.AssemblyInfoInputs.cache
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.AssemblyInfo.cs
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.csproj.CoreCompileInputs.cache
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.sourcelink.json
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.dll
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\refint\Experiments.dll
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.pdb
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\Experiments.genruntimeconfig.cache
+E:\SakayoriIroha\Experiments\obj\Debug\net9.0\ref\Experiments.dll

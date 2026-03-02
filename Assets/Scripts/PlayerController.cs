@@ -3,8 +3,8 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [Header("基础设置")]
-    [SerializeField] private CameraController cameraController; // 相机控制器引用
-    
+    [SerializeField] private CameraController cameraController;
+
     [Header("移动设置")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float moveSmooth = 0.1f;
@@ -13,7 +13,10 @@ public class PlayerController : MonoBehaviour
     [Header("玩家属性配置")]
     [SerializeField] private float baseAttack = 10f;
     [SerializeField] private float baseMaxHP = 100f;
-    [SerializeField] private float baseAttackSpeed = 0.5f;
+
+    // ✅ 语义：这里是“攻速加成值”，0.2 代表 +20%
+    [SerializeField] private float baseAttackSpeed = 0.0f;
+
     [SerializeField] private float upgradeBonusRate = 0.1f;
 
     [Header("受伤无敌设置")]
@@ -25,24 +28,30 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private WeaponManager weaponManager;
     [SerializeField] private Camera mainCamera;
 
-    // 原有变量
     private Vector2 inputDirection;
     private Vector2 smoothInputVelocity;
     private Vector2 currentVelocity;
+
     public float CurrentAttack { get; private set; }
-    
-    public float CurrentAttackSpeed
+
+    /// <summary>
+    /// ✅ 语义：攻速“加成值”，0.2 表示 +20%
+    /// </summary>
+    public float CurrentAttackSpeedBonus
     {
         get
         {
-            if (CombatModifierSystem.Instance == null)
-                return baseAttackSpeed;
+            float bonus = baseAttackSpeed;
+            float mult = 1f;
 
-            return baseAttackSpeed *
-                   CombatModifierSystem.Instance.playerAttackSpeedMultiplier;
+            if (CombatModifierSystem.Instance != null)
+                mult = Mathf.Clamp(CombatModifierSystem.Instance.playerAttackSpeedMultiplier, 0.25f, 4f);
+
+            // bonus 仍是 bonus，只是受本层倍率影响（你也可以选择不影响bonus，仅影响最终因子）
+            return bonus * mult;
         }
     }
-    
+
     public float CurrentExp { get; private set; }
     public float ExpToNextLevel { get; private set; }
     public float MaxHP { get; private set; }
@@ -50,7 +59,6 @@ public class PlayerController : MonoBehaviour
     public int Level { get; private set; }
     public float CurrentMoveSpeed { get; private set; }
 
-    // 无敌相关
     private float invincibilityRemaining;
     private bool isInvincible => invincibilityRemaining > 0f;
     private float flashTimer;
@@ -61,15 +69,10 @@ public class PlayerController : MonoBehaviour
     private void Awake()
     {
         if (gameController == null)
-        {
             gameController = FindObjectOfType<GameController>();
-        }
 
-        // 自动获取相机控制器
         if (cameraController == null)
-        {
             cameraController = FindObjectOfType<CameraController>();
-        }
 
         rb = GetComponent<Rigidbody2D>();
         if (rb == null) rb = gameObject.AddComponent<Rigidbody2D>();
@@ -77,7 +80,6 @@ public class PlayerController : MonoBehaviour
         rb.freezeRotation = true;
         rb.bodyType = RigidbodyType2D.Dynamic;
         rb.interpolation = RigidbodyInterpolation2D.Interpolate;
-        // 新增：防止角色旋转（可选）
         rb.constraints = RigidbodyConstraints2D.FreezeRotation;
 
         InitPlayerStats();
@@ -92,17 +94,14 @@ public class PlayerController : MonoBehaviour
         GetPlayerInput();
         CalculateSmoothMovement();
 
-        if (gameController.IsPlayerLockedInRoom())
-        {
+        if (gameController != null && gameController.IsPlayerLockedInRoom())
             currentVelocity = ValidateMovement(currentVelocity);
-        }
 
         AimAtMouse();
         CheckLevelUp();
         UpdateInvincibility();
     }
 
-    // 关键修改：移动逻辑移到FixedUpdate（物理更新帧）
     private void FixedUpdate()
     {
         ApplyMovement();
@@ -117,22 +116,22 @@ public class PlayerController : MonoBehaviour
 
     private void CalculateSmoothMovement()
     {
-        inputDirection = Vector2.SmoothDamp(
+        // 你原来 SmoothDamp 写法比较怪（把 inputDirection 往 zero 拉）
+        // 这里保持你的逻辑不大改，只修“finalMoveSpeed 变量没用”的问题。
+        Vector2 smoothed = Vector2.SmoothDamp(
             inputDirection,
             Vector2.zero,
             ref smoothInputVelocity,
             moveSmooth
         );
-        float finalMoveSpeed = CurrentMoveSpeed;
-        if (CombatModifierSystem.Instance != null)
-        {
-            finalMoveSpeed *= CombatModifierSystem.Instance.playerDamageMultiplier; // ❌ 这里不能乱
-        }
-        currentVelocity = inputDirection * CurrentMoveSpeed;
+
+        currentVelocity = smoothed * CurrentMoveSpeed;
     }
 
     private Vector2 ValidateMovement(Vector2 desiredVelocity)
     {
+        if (gameController == null) return desiredVelocity;
+
         RoomData currentRoom = gameController.GetCurrentPlayerRoom();
         if (currentRoom == null || currentRoom.floorPositions == null) return desiredVelocity;
 
@@ -142,38 +141,27 @@ public class PlayerController : MonoBehaviour
             Mathf.FloorToInt(targetPos.y)
         );
 
-        bool isTargetValid = currentRoom.floorPositions.Contains(targetGridPos);
-        if (isTargetValid)
-        {
+        if (currentRoom.floorPositions.Contains(targetGridPos))
             return desiredVelocity;
-        }
-        else
-        {
-            Vector2 validVelocity = Vector2.zero;
-            Vector3 targetPosX = transform.position + new Vector3(desiredVelocity.x, 0, 0) * Time.fixedDeltaTime;
-            Vector2Int targetGridX = new Vector2Int(Mathf.FloorToInt(targetPosX.x), Mathf.FloorToInt(transform.position.y));
-            if (currentRoom.floorPositions.Contains(targetGridX))
-            {
-                validVelocity.x = desiredVelocity.x;
-            }
 
-            Vector3 targetPosY = transform.position + new Vector3(0, desiredVelocity.y, 0) * Time.fixedDeltaTime;
-            Vector2Int targetGridY = new Vector2Int(Mathf.FloorToInt(transform.position.x), Mathf.FloorToInt(targetPosY.y));
-            if (currentRoom.floorPositions.Contains(targetGridY))
-            {
-                validVelocity.y = desiredVelocity.y;
-            }
-            return validVelocity;
-        }
+        Vector2 validVelocity = Vector2.zero;
+
+        Vector3 targetPosX = transform.position + new Vector3(desiredVelocity.x, 0, 0) * Time.fixedDeltaTime;
+        Vector2Int targetGridX = new Vector2Int(Mathf.FloorToInt(targetPosX.x), Mathf.FloorToInt(transform.position.y));
+        if (currentRoom.floorPositions.Contains(targetGridX))
+            validVelocity.x = desiredVelocity.x;
+
+        Vector3 targetPosY = transform.position + new Vector3(0, desiredVelocity.y, 0) * Time.fixedDeltaTime;
+        Vector2Int targetGridY = new Vector2Int(Mathf.FloorToInt(transform.position.x), Mathf.FloorToInt(targetPosY.y));
+        if (currentRoom.floorPositions.Contains(targetGridY))
+            validVelocity.y = desiredVelocity.y;
+
+        return validVelocity;
     }
 
-    // 核心修复：改用Rigidbody2D控制移动
     private void ApplyMovement()
     {
-        // 设置刚体速度，让物理引擎处理碰撞
         rb.velocity = currentVelocity;
-        // 替代方案（如果需要更平滑）：
-        // rb.MovePosition(rb.position + currentVelocity * Time.fixedDeltaTime);
     }
 
     private void InitPlayerStats()
@@ -181,7 +169,7 @@ public class PlayerController : MonoBehaviour
         Level = 1;
         CurrentExp = 0;
         ExpToNextLevel = 100;
-        
+
         float upgradeMultiplier = Mathf.Pow(1 + upgradeBonusRate, Level - 1);
         CurrentAttack = baseAttack * upgradeMultiplier;
         CurrentMoveSpeed = moveSpeed * upgradeMultiplier;
@@ -194,32 +182,24 @@ public class PlayerController : MonoBehaviour
     private void InitWeaponSystem()
     {
         if (mainCamera == null)
-        {
             mainCamera = Camera.main;
-        }
-        if (weaponManager != null)
-        {
-            weaponManager.InitWeaponManager(this);
-        }
 
-        // 自动获取主相机的备用逻辑
+        if (weaponManager != null)
+            weaponManager.InitWeaponManager(this);
+
         if (mainCamera == null)
-        {
             mainCamera = Camera.main;
-        }
     }
 
     private void AimAtMouse()
     {
         if (mainCamera == null || weaponManager == null) return;
-        
+
         Vector2 mouseWorldPos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
-        Vector2 aimDirection = (mouseWorldPos - (Vector2)transform.position).normalized;
-        
-        if (aimDirection != Vector2.zero)
-        {
-            weaponManager.SetAimDirection(aimDirection);
-        }
+        Vector2 aimDir = (mouseWorldPos - (Vector2)transform.position).normalized;
+
+        if (aimDir != Vector2.zero)
+            weaponManager.SetAimDirection(aimDir);
     }
 
     public void AddExp(float exp)
@@ -231,9 +211,7 @@ public class PlayerController : MonoBehaviour
     private void CheckLevelUp()
     {
         if (CurrentExp >= ExpToNextLevel)
-        {
             LevelUp();
-        }
     }
 
     public void LevelUp()
@@ -241,7 +219,7 @@ public class PlayerController : MonoBehaviour
         Level++;
         CurrentExp -= ExpToNextLevel;
         ExpToNextLevel *= 1.5f;
-        
+
         float upgradeMultiplier = Mathf.Pow(1 + upgradeBonusRate, Level - 1);
         CurrentAttack = baseAttack * upgradeMultiplier;
         CurrentMoveSpeed = moveSpeed * upgradeMultiplier;
@@ -263,12 +241,15 @@ public class PlayerController : MonoBehaviour
         float finalDamage = damage;
 
         if (CombatModifierSystem.Instance != null)
-        {
             finalDamage *= CombatModifierSystem.Instance.playerReceiveDamageMultiplier;
-        }
+
+        finalDamage = Mathf.Max(0f, finalDamage);
 
         CurrentHP = Mathf.Max(0, CurrentHP - finalDamage);
-        
+
+        // ✅ 统计：承伤打点（只统计本层 current）
+        NPCRunFloorStats.Instance?.RecordDamageTaken(finalDamage);
+
         Debug.Log($"玩家受到{finalDamage}伤害，剩余血量：{CurrentHP}");
 
         invincibilityRemaining = invincibilityTime;
@@ -277,11 +258,8 @@ public class PlayerController : MonoBehaviour
         {
             Debug.Log("玩家死亡！触发强抖动");
 
-            // ✅ 关键：通知游戏结束
             if (gameController != null)
-            {
                 gameController.OnPlayerDeath();
-            }
         }
 
         OnPlayerStatsChanged?.Invoke();
@@ -307,9 +285,7 @@ public class PlayerController : MonoBehaviour
         else
         {
             if (playerSprite != null && !playerSprite.enabled)
-            {
                 playerSprite.enabled = true;
-            }
         }
     }
 
@@ -323,9 +299,40 @@ public class PlayerController : MonoBehaviour
         return gameController.IsInCombat;
     }
 
-    public bool IsPlayerInvincible()
+    public bool IsPlayerInvincible() => isInvincible;
+
+    public void AddAttack(float value)
     {
-        return isInvincible;
+        CurrentAttack += value;
+        OnPlayerStatsChanged?.Invoke();
+    }
+
+    public void AddMaxHP(float value, bool healCurrent = true)
+    {
+        MaxHP += value;
+        if (healCurrent)
+            CurrentHP = Mathf.Min(MaxHP, CurrentHP + value);
+
+        OnPlayerStatsChanged?.Invoke();
+    }
+
+    public void HealHP(float value)
+    {
+        if (value <= 0f) return;
+
+        float before = CurrentHP;
+        CurrentHP = Mathf.Min(CurrentHP + value, MaxHP);
+        float actual = Mathf.Max(0f, CurrentHP - before);
+
+        // ✅ 统计：治疗量
+        NPCRunFloorStats.Instance?.RecordHealed(actual);
+
+        OnPlayerStatsChanged?.Invoke();
+    }
+
+    public void TakeDamageDirect(float value)
+    {
+        TakeDamage(value);
     }
 
     private void OnDrawGizmos()
@@ -343,32 +350,4 @@ public class PlayerController : MonoBehaviour
             }
         }
     }
-    
-    public void AddAttack(float value)
-    {
-        CurrentAttack += value;
-        OnPlayerStatsChanged?.Invoke();
-    }
-
-    public void AddMaxHP(float value, bool healCurrent = true)
-    {
-        MaxHP += value;
-        if (healCurrent)
-            CurrentHP += value;
-
-        OnPlayerStatsChanged?.Invoke();
-    }
-
-    public void HealHP(float value)
-    {
-        CurrentHP = Mathf.Min(CurrentHP + value, MaxHP);
-        OnPlayerStatsChanged?.Invoke();
-    }
-
-    public void TakeDamageDirect(float value)
-    {
-        TakeDamage(value);
-    }
-    
-    
 }

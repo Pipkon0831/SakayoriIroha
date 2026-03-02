@@ -38,33 +38,26 @@ public class Enemy : MonoBehaviour
     private LayerMask playerLayer;
     private ContactFilter2D playerContactFilter;
 
-    // 标记是否已死亡，防止重复触发死亡逻辑
     private bool isDead = false;
 
-    // ✅ 记录“基础值”（Inspector 里填的原始数值）
     private float baseMaxHP;
     private float baseAttackDamage;
 
     private void Awake()
     {
-        // 先缓存基础值（Prefab/Inspector里填的原始数值）
         baseMaxHP = maxHP;
         baseAttackDamage = attackDamage;
 
         player = FindObjectOfType<PlayerController>();
         gameController = FindObjectOfType<GameController>();
 
-        // ✅ 按层倍率应用（拿不到 GC 就退化为 1.0）
         float mult = 1f;
         if (gameController != null)
-        {
             mult = gameController.EnemyStatMultiplier;
-        }
 
         maxHP = baseMaxHP * mult;
         attackDamage = baseAttackDamage * mult;
 
-        // 用“实际 maxHP”初始化当前血量
         currentHP = maxHP;
 
         lastAttackTime = -attackCooldown;
@@ -90,20 +83,15 @@ public class Enemy : MonoBehaviour
             layerMask = playerLayer,
             useTriggers = false
         };
-
-        // （可选）调试：确认倍率生效
-        // Debug.Log($"[EnemyScale] {name} Floor={gameController?.CurrentFloorIndex ?? -1}, mult={mult:F2}, HP={maxHP:F1}, ATK={attackDamage:F1}");
     }
 
     private void Start()
     {
-        // ✅ 防御：等地牢生成/房间数据 ready 再尝试绑定房间，避免 NRE
         StartCoroutine(InitRoomCoroutine());
     }
 
     private IEnumerator InitRoomCoroutine()
     {
-        // 最多等待 30 帧
         for (int i = 0; i < 30; i++)
         {
             if (TryGetEnemyCurrentRoom())
@@ -112,19 +100,14 @@ public class Enemy : MonoBehaviour
             yield return null;
         }
 
-        // 超时不崩：进入降级模式（后续 FixedUpdate 仍会再尝试）
         Debug.LogWarning($"[Enemy] {name} 无法定位所属房间（30帧超时）。将保持 Idle，直到后续可定位。");
     }
 
     private void FixedUpdate()
     {
-        // 死亡后直接返回，不再执行任何逻辑
         if (isDead) return;
-
-        // player 缺失就不跑
         if (player == null) return;
 
-        // ✅ 防御：如果没拿到房间，尝试补一次（例如地牢刚生成/刷新）
         if (currentRoom == null)
         {
             TryGetEnemyCurrentRoom();
@@ -135,19 +118,12 @@ public class Enemy : MonoBehaviour
 
         switch (currentState)
         {
-            case EnemyState.Idle:
-                IdleWander();
-                break;
-            case EnemyState.Chase:
-                ChasePlayer();
-                break;
-            case EnemyState.Attack:
-                AttackState();
-                break;
+            case EnemyState.Idle: IdleWander(); break;
+            case EnemyState.Chase: ChasePlayer(); break;
+            case EnemyState.Attack: AttackState(); break;
         }
     }
 
-    #region AI 状态更新
     private void UpdateEnemyState()
     {
         if (gameController == null) gameController = FindObjectOfType<GameController>();
@@ -173,9 +149,7 @@ public class Enemy : MonoBehaviour
         else
             currentState = EnemyState.Idle;
     }
-    #endregion
 
-    #region 闲置游走
     private void IdleWander()
     {
         idleDirTimer += Time.fixedDeltaTime;
@@ -193,35 +167,27 @@ public class Enemy : MonoBehaviour
         moveDir += GetSeparationDirection();
         Move(moveDir);
     }
-    #endregion
 
-    #region 追击玩家
     private void ChasePlayer()
     {
         Vector2 dir = (player.transform.position - transform.position).normalized;
         float finalSpeed = moveSpeed;
 
         if (CombatModifierSystem.Instance != null)
-        {
             finalSpeed *= CombatModifierSystem.Instance.enemySpeedMultiplier;
-        }
 
         Vector2 moveDir = dir * finalSpeed;
 
         moveDir += GetSeparationDirection();
         Move(moveDir);
     }
-    #endregion
 
-    #region 攻击状态（核心：重叠检测+扣血）
     private void AttackState()
     {
         rb.velocity = rb.velocity * 0.5f;
 
         if (IsPlayerOverlapping())
-        {
             TryAttackPlayer();
-        }
     }
 
     private bool IsPlayerOverlapping()
@@ -233,9 +199,7 @@ public class Enemy : MonoBehaviour
                && hitColliders[0] != null
                && hitColliders[0].GetComponent<PlayerController>() == player;
     }
-    #endregion
 
-    #region 移动（保留物理，能撞墙）
     private void Move(Vector2 moveDir)
     {
         Vector2 nextPos = (Vector2)transform.position + moveDir * Time.fixedDeltaTime;
@@ -250,15 +214,12 @@ public class Enemy : MonoBehaviour
 
     private bool IsInRoom(Vector2 pos)
     {
-        // ✅ 防御：拿不到 room 时降级处理（不阻塞移动）
         if (currentRoom == null || currentRoom.floorPositions == null) return true;
 
         Vector2Int grid = new Vector2Int(Mathf.FloorToInt(pos.x), Mathf.FloorToInt(pos.y));
         return currentRoom.floorPositions.Contains(grid);
     }
-    #endregion
 
-    #region 怪物分离
     private Vector2 GetSeparationDirection()
     {
         Vector2 separation = Vector2.zero;
@@ -276,9 +237,7 @@ public class Enemy : MonoBehaviour
         }
         return separation;
     }
-    #endregion
 
-    #region 攻击、受击、死亡
     private void TryAttackPlayer()
     {
         if (player.IsPlayerInvincible())
@@ -289,9 +248,7 @@ public class Enemy : MonoBehaviour
             float finalDamage = attackDamage;
 
             if (CombatModifierSystem.Instance != null)
-            {
                 finalDamage *= CombatModifierSystem.Instance.playerReceiveDamageMultiplier;
-            }
 
             Debug.Log($"[怪物攻击] 扣血{finalDamage}（基础ATK={attackDamage}），玩家当前血量：{player.CurrentHP}");
 
@@ -307,28 +264,25 @@ public class Enemy : MonoBehaviour
         currentHP = Mathf.Max(0, currentHP - damage);
 
         if (currentHP <= 0)
-        {
             Die();
-        }
     }
 
     private void Die()
     {
         isDead = true;
 
+        // ✅ 统计：击杀数
+        NPCRunFloorStats.Instance?.RecordKill(1);
+
         if (player != null)
-        {
             player.AddExp(expReward);
-        }
 
         if (gameController != null)
             gameController.NotifyEnemyDeath(gameObject);
 
         Destroy(gameObject);
     }
-    #endregion
 
-    #region 房间检测（防御式）
     private bool TryGetEnemyCurrentRoom()
     {
         if (gameController == null) gameController = FindObjectOfType<GameController>();
@@ -357,7 +311,6 @@ public class Enemy : MonoBehaviour
 
         return false;
     }
-    #endregion
 
     private void OnDrawGizmosSelected()
     {

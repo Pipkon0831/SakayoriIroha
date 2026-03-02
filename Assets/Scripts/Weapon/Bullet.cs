@@ -18,7 +18,6 @@ public class Bullet : MonoBehaviour
     private float explosionRadius = 1.5f;
     private float explosionDamageMultiplier = 0.6f;
 
-    // 防止同一颗子弹在同一敌人多个碰撞体/多帧触发时重复扣血
     private readonly HashSet<int> hitEnemyInstanceIds = new HashSet<int>();
 
     private void Awake()
@@ -39,16 +38,12 @@ public class Bullet : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 初始化子弹属性（含改造参数）
-    /// </summary>
     public void InitBullet(float dmg, Vector2 dir, float spd, WeaponMods mods)
     {
         damage = dmg;
         direction = dir.normalized;
         speed = spd;
 
-        // 应用改造
         if (mods != null)
         {
             remainingPenetration = Mathf.Max(0, mods.penetrateCount);
@@ -65,14 +60,12 @@ public class Bullet : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        // Wall：无条件销毁
         if (other.CompareTag("Wall"))
         {
             DestroyBullet();
             return;
         }
 
-        // Enemy：扣血 + 可能爆炸 + 可能穿透
         if (other.CompareTag("Enemy"))
         {
             Enemy enemy = other.GetComponent<Enemy>();
@@ -82,6 +75,10 @@ public class Bullet : MonoBehaviour
                 if (!hitEnemyInstanceIds.Contains(id))
                 {
                     hitEnemyInstanceIds.Add(id);
+
+                    // ✅ 命中统计：只记首次命中同一敌人
+                    NPCRunFloorStats.Instance?.RecordHitEnemy(1);
+
                     enemy.TakeDamage(damage);
                 }
             }
@@ -93,11 +90,10 @@ public class Bullet : MonoBehaviour
                 return;
             }
 
-            // 不爆炸：看穿透次数
             if (remainingPenetration > 0)
             {
                 remainingPenetration--;
-                return; // 继续飞
+                return;
             }
 
             DestroyBullet();
@@ -106,7 +102,6 @@ public class Bullet : MonoBehaviour
 
     private void Explode()
     {
-        // 对半径内的敌人造成伤害
         Collider2D[] cols = Physics2D.OverlapCircleAll(transform.position, explosionRadius);
         float explodeDmg = Mathf.Max(0f, damage * explosionDamageMultiplier);
 
@@ -117,11 +112,10 @@ public class Bullet : MonoBehaviour
             var e = cols[i].GetComponent<Enemy>();
             if (e != null)
             {
+                // 如果你想让爆炸也计入命中，可在这里 RecordHitEnemy
                 e.TakeDamage(explodeDmg);
             }
         }
-
-        // 你想要爆炸特效的话，在这里 Instantiate VFX
     }
 
     private void DestroyBullet()
@@ -133,7 +127,6 @@ public class Bullet : MonoBehaviour
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
-        // 方便你调爆炸半径（只在选中时显示）
         Gizmos.DrawWireSphere(transform.position, explosionRadius);
     }
 #endif

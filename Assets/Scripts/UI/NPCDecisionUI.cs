@@ -55,16 +55,13 @@ public class NPCDecisionUI : MonoBehaviour
     private enum Phase
     {
         OpeningWaiting,
-        Chatting,      // ✅ 同一层可多轮聊天
+        Chatting,
         WaitingLLM
     }
 
     private Phase _phase = Phase.Chatting;
 
-    // ✅ 本层“事件计划”只锁定一次（第一次决策）
     private LLMOrchestrator.DecisionResult _lockedPlan;
-
-    // ✅ 防止连点 / 重入
     private bool _isRequesting;
 
     private static bool s_firstOpeningUsed;
@@ -90,7 +87,6 @@ public class NPCDecisionUI : MonoBehaviour
         SetHeader();
         UpdatePortrait();
 
-        // Input
         if (playerInput != null)
         {
             playerInput.text = "";
@@ -98,12 +94,11 @@ public class NPCDecisionUI : MonoBehaviour
             playerInput.onSubmit.RemoveAllListeners();
             playerInput.onEndEdit.RemoveAllListeners();
             playerInput.lineType = TMP_InputField.LineType.MultiLineNewline;
-            
-            playerInput.onValueChanged.AddListener(_ => RefreshActionButtonLabel());
 
+            playerInput.onValueChanged.RemoveAllListeners();
+            playerInput.onValueChanged.AddListener(_ => RefreshActionButtonLabel());
         }
 
-        // Button
         if (actionButton != null)
         {
             actionButton.onClick.RemoveAllListeners();
@@ -154,9 +149,6 @@ public class NPCDecisionUI : MonoBehaviour
 
     private void RefreshActionButtonLabel()
     {
-        // ✅ 单按钮双语义：
-        // - 输入框有字：发送
-        // - 输入框空：下楼（如果已锁定事件计划）
         string t = playerInput != null ? playerInput.text.Trim() : "";
         bool hasText = !string.IsNullOrEmpty(t);
 
@@ -173,22 +165,15 @@ public class NPCDecisionUI : MonoBehaviour
 
         string t = playerInput != null ? playerInput.text.Trim() : "";
 
-        // ✅ 空输入：如果已有计划 → 直接下楼
         if (string.IsNullOrEmpty(t))
         {
             if (_lockedPlan != null)
-            {
                 ApplyAndEnterNextFloor();
-            }
             else
-            {
-                // 没有计划却空输入：不做事
                 RefreshActionButtonLabel();
-            }
             return;
         }
 
-        // ✅ 有输入：发送聊天
         TrySend(t);
     }
 
@@ -213,9 +198,8 @@ public class NPCDecisionUI : MonoBehaviour
     private async System.Threading.Tasks.Task<string> RequestOpeningTask()
     {
         int affinity = (LLMEventBridge.Instance != null) ? LLMEventBridge.Instance.Affinity : 0;
-        string dialogueMemory = (NPCRunDialogueMemory.Instance != null)
-            ? NPCRunDialogueMemory.Instance.BuildContextForLLM()
-            : historySummaryPlaceholder;
+
+        string context = BuildLLMContextString();
 
         if (LLMOrchestrator.Instance == null)
         {
@@ -225,17 +209,29 @@ public class NPCDecisionUI : MonoBehaviour
 
         var token = (_cts != null) ? _cts.Token : CancellationToken.None;
 
+        // ✅ 本局第一次 Show() -> 首句自我介绍模式
+        bool isFirstOpening = !s_firstOpeningUsed;
+
         try
         {
-            return await LLMOrchestrator.Instance.RequestOpeningLineAsync(
+            string line = await LLMOrchestrator.Instance.RequestOpeningLineAsync(
                 affinity,
-                dialogueMemory,
+                context,
                 currentNPC,
+                isFirstOpening,
                 token);
+
+            // ✅ 无论成功失败（异常会走 catch），只要触发过“首句模式”，就标记用过
+            if (isFirstOpening) s_firstOpeningUsed = true;
+
+            return line;
         }
         catch (System.Exception ex)
         {
             Debug.LogError($"NPCDecisionUI: RequestOpeningLineAsync failed:\n{ex}");
+
+            if (isFirstOpening) s_firstOpeningUsed = true;
+
             return null;
         }
     }
@@ -274,17 +270,14 @@ public class NPCDecisionUI : MonoBehaviour
             yield break;
         }
 
-        // NPC回复
         AddMessage(npcBubblePrefab, result.npcReply);
 
-        // ✅ 好感度即时生效：每轮聊天都有“反馈”
         if (LLMEventBridge.Instance != null)
             LLMEventBridge.Instance.ApplyAffinityDelta(result.affinityDelta);
 
         SetHeader();
         UpdatePortrait();
 
-        // ✅ 事件计划：只在本层第一次锁定并展示
         if (_lockedPlan == null)
         {
             _lockedPlan = result;
@@ -295,11 +288,6 @@ public class NPCDecisionUI : MonoBehaviour
             if (_lockedPlan.nextFloor != null)
                 foreach (var e in _lockedPlan.nextFloor) AddSystemLine(FormatNextFloorEventLine(e));
         }
-        else
-        {
-            // 后续聊天：不再播报/覆盖事件，保持“本层计划”稳定
-            // 你也可以在这里偶尔提示：AddSystemLine("系统：本层事件计划已锁定。");
-        }
 
         _isRequesting = false;
         EnterChattingPhase();
@@ -309,9 +297,7 @@ public class NPCDecisionUI : MonoBehaviour
     {
         int affinity = (LLMEventBridge.Instance != null) ? LLMEventBridge.Instance.Affinity : 0;
 
-        string dialogueMemory = (NPCRunDialogueMemory.Instance != null)
-            ? NPCRunDialogueMemory.Instance.BuildContextForLLM()
-            : historySummaryPlaceholder;
+        string context = BuildLLMContextString();
 
         if (LLMOrchestrator.Instance == null)
         {
@@ -326,7 +312,7 @@ public class NPCDecisionUI : MonoBehaviour
             return await LLMOrchestrator.Instance.RequestDecisionAsync(
                 playerText,
                 affinity,
-                dialogueMemory,
+                context,
                 currentNPC,
                 token);
         }
@@ -337,33 +323,70 @@ public class NPCDecisionUI : MonoBehaviour
         }
     }
 
+    private string BuildLLMContextString()
+    {
+        // 1) 对话记忆
+        string dialogue = (NPCRunDialogueMemory.Instance != null)
+            ? NPCRunDialogueMemory.Instance.BuildContextForLLM()
+            : historySummaryPlaceholder;
+
+        // 2) 上一层统计
+        string lastFloor = (NPCRunFloorStats.Instance != null)
+            ? NPCRunFloorStats.Instance.BuildLastFloorSummaryForLLM()
+            : "";
+
+        // 3) 本局事件记忆（避免重复）
+        string eventMem = (NPCRunEventMemory.Instance != null)
+            ? NPCRunEventMemory.Instance.BuildForLLM()
+            : "";
+
+        return $"{dialogue}\n\n{lastFloor}\n\n{eventMem}".Trim();
+    }
+
     private void ApplyAndEnterNextFloor()
     {
         SetButtonInteractable(false);
 
-        if (_lockedPlan != null)
+        if (_lockedPlan == null)
         {
-            WriteToLayerEventSystem(_lockedPlan.nextFloor ?? new List<LayerEvent>(),
-                                    _lockedPlan.instants ?? new List<LayerEvent>());
+            Debug.LogWarning("NPCDecisionUI: _lockedPlan is null, cannot enter next floor.");
+            SetButtonInteractable(true);
+            RefreshActionButtonLabel();
+            return;
+        }
+
+        // ✅ 冻结上一层统计：下楼那一刻，把 current 固定为 last
+        NPCRunFloorStats.Instance?.FreezeCurrentAsLast();
+
+        WriteToLayerEventSystem(
+            _lockedPlan.nextFloor ?? new List<LayerEvent>(),
+            _lockedPlan.instants ?? new List<LayerEvent>());
+
+        if (NPCRunEventMemory.Instance != null)
+        {
+            NPCRunEventMemory.Instance.RecordEvents(_lockedPlan.nextFloor);
+            NPCRunEventMemory.Instance.RecordEvents(_lockedPlan.instants);
         }
 
         var applier = FindFirstObjectByType<LayerEventApplier>();
         if (applier != null)
             applier.ApplyAndConsumeInstantEvents();
+        else
+            Debug.LogWarning("NPCDecisionUI: 未找到 LayerEventApplier，即时事件未被应用（但已写入LayerEventSystem）。");
 
         var gc = FindFirstObjectByType<GameController>();
-        if (gc != null)
-        {
-            Hide();
-            gc.StartNewFloor();
-            gc.MovePlayerToSpawnRoomCenterIfPossible_Public();
-        }
-        else
+        if (gc == null)
         {
             Debug.LogError("NPCDecisionUI: 未找到 GameController，无法进入下一层。");
             SetButtonInteractable(true);
+            RefreshActionButtonLabel();
             return;
         }
+
+        Hide();
+
+        gc.StartNewFloor();
+        gc.MovePlayerToSpawnRoomCenterIfPossible_Public();
     }
 
     private void WriteToLayerEventSystem(List<LayerEvent> nextFloor, List<LayerEvent> instants)
@@ -534,9 +557,6 @@ public class NPCDecisionUI : MonoBehaviour
         if (buttonLabel != null) buttonLabel.text = text;
     }
 
-    // -------------------------
-    // Fallbacks
-    // -------------------------
     private string PickOpeningFallbackLine()
     {
         var p = (NPCRunPersonalityManager.Instance != null) ? NPCRunPersonalityManager.Instance.Selected : null;
@@ -564,9 +584,6 @@ public class NPCDecisionUI : MonoBehaviour
         return "……";
     }
 
-    // -------------------------
-    // Formatting
-    // -------------------------
     private static string FormatNextFloorEventLine(LayerEvent e)
     {
         if (e == null) return "";
@@ -615,28 +632,21 @@ public class NPCDecisionUI : MonoBehaviour
             case LayerEventType.PlayerAttackDown:
                 return $"系统：即时 攻击 -{Mathf.RoundToInt(e.value)}";
 
-            // =========================
-            // 武器即时永久事件（新增）
-            // =========================
             case LayerEventType.WeaponPenetrationUp:
             {
-                // value 可能为 0（表示默认+1），显示时友好一点
                 int add = (e.value <= 0f) ? 1 : Mathf.RoundToInt(e.value);
                 return $"系统：即时 武器强化：穿透 +{add}";
             }
-
             case LayerEventType.WeaponExtraProjectileUp:
             {
                 int add = (e.value <= 0f) ? 1 : Mathf.RoundToInt(e.value);
                 return $"系统：即时 武器强化：额外子弹 +{add}";
             }
-
             case LayerEventType.WeaponBulletSizeUp:
             {
                 float mul = (e.value <= 0.01f) ? 1.2f : e.value;
                 return $"系统：即时 武器强化：子弹体积 ×{mul:0.##}";
             }
-
             case LayerEventType.WeaponExplosionOnHit:
             {
                 float radius = (e.value <= 0.01f) ? 1.5f : e.value;

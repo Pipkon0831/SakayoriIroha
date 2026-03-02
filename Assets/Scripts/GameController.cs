@@ -1,8 +1,7 @@
-using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.SceneManagement;
-using System.Threading;
 
 public class GameController : MonoBehaviour
 {
@@ -44,14 +43,12 @@ public class GameController : MonoBehaviour
         IsInCombat = false;
         isGameOver = false;
 
-        // ✅ 新开局：清空“本局对话记忆”（不展示在UI，只给LLM上下文用）
-        // 注意：如果你把 NPCRunDialogueMemory 做成 DontDestroyOnLoad，这一步很重要
+        // ✅ 新开局：清空记忆/缓存/统计
         NPCRunDialogueMemory.Instance?.ClearRunMemory();
-
-        // ✅（可选但推荐）新开局：清空开场白缓存，避免上一局预取的 opening 混到这一局
         NPCDialogueCache.Instance?.ClearAll();
+        NPCRunEventMemory.Instance?.ClearRunMemory();
+        NPCRunFloorStats.Instance?.ResetAll();
 
-        // ✅ 开局确保抽取“本局人格”（只抽一次，整局固定）
         if (NPCRunPersonalityManager.Instance != null)
             NPCRunPersonalityManager.Instance.EnsurePicked();
 
@@ -61,7 +58,7 @@ public class GameController : MonoBehaviour
         if (!autoGenerateOnStart)
             return;
 
-        // ✅ 开局保险：清理事件残留（Editor 多次运行时很常见）
+        // ✅ 开局保险：清理事件残留（Editor 多次运行常见）
         if (LayerEventSystem.Instance != null)
         {
             LayerEventSystem.Instance.ClearNextFloorEvents();
@@ -69,7 +66,7 @@ public class GameController : MonoBehaviour
             LayerEventSystem.Instance.ConsumeInstantEvents();
         }
 
-        // ✅ 正常流程：开局先进入 NPC 对话阶段（NPC 首句固定，不等 LLM）
+        // ✅ 开局：进入 NPC 对话阶段
         if (npcDecisionUI != null)
         {
             npcDecisionUI.Show();
@@ -81,8 +78,6 @@ public class GameController : MonoBehaviour
             MovePlayerToSpawnRoomCenterIfPossible();
         }
     }
-
-
 
     private void Update()
     {
@@ -101,22 +96,22 @@ public class GameController : MonoBehaviour
     /// 1) next -> current
     /// 2) 应用本层事件
     /// 3) 生成地牢
-    /// 4) ✅ 后台预取“下一次对话阶段开场白”（用于下一层结束后的对话，不阻塞）
     /// </summary>
     public void StartNewFloor()
     {
         CurrentFloorIndex++;
         Debug.Log($"进入第 {CurrentFloorIndex} 层");
 
+        // ✅ 统计：进入新层即 StartFloor（上一层会自动归档到 last）
+        NPCRunFloorStats.Instance?.StartFloor(CurrentFloorIndex);
+
         CurrentFloorModifier = new FloorModifierData();
 
-        // 1) 进入新层：提交 next -> current
         if (LayerEventSystem.Instance != null)
         {
             LayerEventSystem.Instance.CommitNextFloorToCurrent();
         }
 
-        // 2) 应用本层事件（倍率/视野/房间覆盖）
         if (layerEventApplier != null)
         {
             layerEventApplier.ApplyCurrentFloorEvents();
@@ -204,9 +199,6 @@ public class GameController : MonoBehaviour
                 break;
 
             case RoomData.RoomType.Spawn:
-                ExitCombatState();
-                break;
-
             case RoomData.RoomType.Reward:
                 ExitCombatState();
                 break;
@@ -272,7 +264,6 @@ public class GameController : MonoBehaviour
 
         if (isBossRoomCleared && autoRegenAfterBoss && !isWaitingToRegen)
         {
-            // ✅ 本层结束：清掉 currentFloorEvents（单层效果结束）
             if (LayerEventSystem.Instance != null)
                 LayerEventSystem.Instance.OnFloorEnd();
 
@@ -284,10 +275,8 @@ public class GameController : MonoBehaviour
     {
         isWaitingToRegen = true;
 
-        // 1) Boss 清完后延迟
         yield return new WaitForSeconds(delayAfterBossClear);
 
-        // 2) 弹对话UI：此处不 StartNewFloor，由 UI 的 Continue/Confirm 触发 StartNewFloor
         if (npcDecisionUI != null)
         {
             npcDecisionUI.Show();
@@ -372,21 +361,17 @@ public class GameController : MonoBehaviour
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
-    // 给 UI 调用
     public void MovePlayerToSpawnRoomCenterIfPossible_Public()
     {
         MovePlayerToSpawnRoomCenterIfPossible();
     }
-    
+
     public float EnemyStatMultiplier
     {
         get
         {
-            // 第1层倍率=1.0；第2层=1.1；第3层=1.21……
             int floor = Mathf.Max(1, CurrentFloorIndex);
             return Mathf.Pow(1.1f, floor - 1);
         }
     }
-
-
 }

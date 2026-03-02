@@ -1,0 +1,21 @@
+﻿run_id,timestamp_utc,model,seed,affinity,floor_index,player_text,history_summary,latency_ms,http_status,prompt_tokens,completion_tokens,total_tokens,parse_ok,schema_ok,semantic_ok,all_ok,fail_layer,fail_reason,npc_reply,affinity_delta,next_floor_count,instant_count,content_raw,outer_raw
+1,2026-03-02T18:01:51.3396593Z,deepseek-chat,1588016312,-2,40,我想挑战一下极限，不过别直接判死刑。,"【回忆摘要】
+我们最近在第 39 层附近交流过，你提到风险与收益要平衡。
+（run-mem:5385-89-58.9）
+
+【上一层表现】
+- 用时：62.1s
+- 承伤：18.1（最大单次 18.9）
+- 击杀：3；命中：12；开火：31
+",12347,200,924,245,1169,0,0,0,0,Parse,Json parse failed: Exception,,,,,"{""npc_reply"": ""挑战极限？有意思。不过我得提醒你，第40层可不是闹着玩的。既然你不想直接判死刑，那就给你个机会——我会稍微调整一下风险收益比。但别指望我会手软。"", ""affinity_delta: 0, ""next_floor_events: [{""eventType"": ""AllRoomsRewardExceptBossAndSpawn"", ""value"": 1.2}, {""eventType"": ""PlayerReceiveMoreDamage"", ""value"": 1.15}], ""instant_events: [{""eventType"": ""PlayerAttackUp"", ""value"": 5}], ""history_event_summary_delta"": ""玩家在第40层表达了挑战极限的意愿，我增加了奖励但同时也提升了风险，并给予了一次攻击力提升作为鼓励。""}","{""id"":""2da5f01b-4c18-4641-a156-76b88ff63cfb"",""object"":""chat.completion"",""created"":1772474500,""model"":""deepseek-chat"",""choices"":[{""index"":0,""message"":{""role"":""assistant"",""content"":"""",""tool_calls"":[{""index"":0,""id"":""call_00_KXm9xsVwsIPyjjzkIFs4j88h"",""type"":""function"",""function"":{""name"":""submit_npc_decision"",""arguments"":""{\""npc_reply\"": \""挑战极限？有意思。不过我得提醒你，第40层可不是闹着玩的。既然你不想直接判死刑，那就给你个机会——我会稍微调整一下风险收益比。但别指望我会手软。\"", \""affinity_delta: 0, \""next_floor_events: [{\""eventType\"": \""AllRoomsRewardExceptBossAndSpawn\"", \""value\"": 1.2}, {\""eventType\"": \""PlayerReceiveMoreDamage\"", \""value\"": 1.15}], \""instant_events: [{\""eventType\"": \""PlayerAttackUp\"", \""value\"": 5}], \""history_event_summary_delta\"": \""玩家在第40层表达了挑战极限的意愿，我增加了奖励但同时也提升了风险，并给予了一次攻击力提升作为鼓励。\""}""}}]},""logprobs"":null,""finish_reason"":""tool_calls""}],""usage"":{""prompt_tokens"":924,""completion_tokens"":245,""total_tokens"":1169,""prompt_tokens_details"":{""cached_tokens"":704},""prompt_cache_hit_tokens"":704,""prompt_cache_miss_tokens"":220},""system_fingerprint"":""fp_eaab8d114b_prod0820_fp8_kvcache""}"
+2,2026-03-02T18:02:04.8894335Z,deepseek-chat,-75285334,30,23,我想稳一点，但又不想太无聊。,"【回忆摘要】
+我们最近在第 22 层附近交流过，你提到风险与收益要平衡。
+（run-mem:931-8772-92.05）
+
+【上一层表现】
+- 用时：36.7s
+- 承伤：5.4（最大单次 33.8）
+- 击杀：2；命中：6；开火：9
+",13546,200,921,267,1188,0,0,0,0,Parse,Json parse failed: Exception,,,,,"{""npc_reply"": ""稳一点又不想无聊，这倒是很符合地牢探索者的心态。我可以给你一些适中的调整——既不会让你陷入危险，又能保持探索的刺激感。比如稍微提升你的攻击速度，但代价是视野会受限一些。这样你需要更专注地应对敌人，但回报也会相应增加。"", ""affinity_delta: 5, ""next_floor_events: [{""eventType"": ""LowVision"", ""value"": 0.2}, {""eventType"": ""AllRoomsRewardExceptBossAndSpawn"", ""value"": 0.15}], ""instant_events: [{""eventType"": ""PlayerAttackUp"", ""value"": 10}], ""history_event_summary_delta"": ""玩家在第23层表达了想要平衡稳定与刺激的需求，Iroha提供了适中的调整方案：略微限制视野但增加攻击力和奖励获取。""}","{""id"":""617aef2d-f81d-418d-bcf5-6774721031cd"",""object"":""chat.completion"",""created"":1772474512,""model"":""deepseek-chat"",""choices"":[{""index"":0,""message"":{""role"":""assistant"",""content"":"""",""tool_calls"":[{""index"":0,""id"":""call_00_WHuSl540W7et7EGWimCOvjFr"",""type"":""function"",""function"":{""name"":""submit_npc_decision"",""arguments"":""{\""npc_reply\"": \""稳一点又不想无聊，这倒是很符合地牢探索者的心态。我可以给你一些适中的调整——既不会让你陷入危险，又能保持探索的刺激感。比如稍微提升你的攻击速度，但代价是视野会受限一些。这样你需要更专注地应对敌人，但回报也会相应增加。\"", \""affinity_delta: 5, \""next_floor_events: [{\""eventType\"": \""LowVision\"", \""value\"": 0.2}, {\""eventType\"": \""AllRoomsRewardExceptBossAndSpawn\"", \""value\"": 0.15}], \""instant_events: [{\""eventType\"": \""PlayerAttackUp\"", \""value\"": 10}], \""history_event_summary_delta\"": \""玩家在第23层表达了想要平衡稳定与刺激的需求，Iroha提供了适中的调整方案：略微限制视野但增加攻击力和奖励获取。\""}""}}]},""logprobs"":null,""finish_reason"":""tool_calls""}],""usage"":{""prompt_tokens"":921,""completion_tokens"":267,""total_tokens"":1188,""prompt_tokens_details"":{""cached_tokens"":704},""prompt_cache_hit_tokens"":704,""prompt_cache_miss_tokens"":217},""system_fingerprint"":""fp_eaab8d114b_prod0820_fp8_kvcache""}"
+
+尽管 Tool Calls 在理论上提供函数级结构化输出能力，但实验表明，在当前模型与接口实现条件下，其 strict 模式并未对 arguments 执行硬性 JSON 校验，仍出现键名错误、字段缺失及数值违规现象。相比之下，JSON Output 模式直接输出结构化对象，避免了 arguments 字符串嵌套问题，降低了工程复杂度，并在合规率与系统稳定性方面表现更优。因此本系统最终采用 Schema(JSON Output) 作为结构化输出方案。

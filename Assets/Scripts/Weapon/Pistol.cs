@@ -17,7 +17,6 @@ public class Pistol : BaseWeapon
             upgradeState = player.GetComponent<WeaponUpgradeState>();
             if (upgradeState == null)
             {
-                // 自动补一个（避免你忘记挂）
                 upgradeState = player.gameObject.AddComponent<WeaponUpgradeState>();
             }
         }
@@ -33,9 +32,11 @@ public class Pistol : BaseWeapon
         int extra = (mods != null) ? Mathf.Max(0, mods.extraProjectiles) : 0;
         int total = 1 + extra;
 
+        // ✅ 统计：一次Attack=一次开火；total=生成子弹数
+        NPCRunFloorStats.Instance?.RecordShotFired(total);
+
         float spread = (mods != null) ? Mathf.Max(0f, mods.spreadAngleDeg) : 0f;
 
-        // total=1 时角度偏移为0；total>1 时在[-spread/2, +spread/2]均匀分布
         for (int i = 0; i < total; i++)
         {
             float t = (total == 1) ? 0.5f : (i / (float)(total - 1));
@@ -45,7 +46,6 @@ public class Pistol : BaseWeapon
 
             GameObject bullet = Instantiate(bulletPrefab, firePoint.position, Quaternion.identity);
 
-            // 让子弹朝向与速度方向一致（可选）
             float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
             bullet.transform.rotation = Quaternion.Euler(0, 0, angle);
 
