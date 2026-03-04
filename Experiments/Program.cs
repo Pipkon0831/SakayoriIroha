@@ -1,10 +1,11 @@
-// Program.cs - CSV Experiment Runner (Tool Calls / Strict Mode / No NuGet / No SDK required)
+// Program.cs - CSV Experiment Runner (No NuGet / No SDK required)
 // Build (x64):
 //   "%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /optimize+ /langversion:latest /r:System.Net.Http.dll Program.cs
 // Run:
 //   Program.exe 500
 //   Program.exe 500 deepseek-chat
 //   Program.exe 500 deepseek-chat 320 0.7
+//   Program.exe 500 deepseek-chat 320 0.7 114514
 //
 // Env:
 //   DEEPSEEK_API_KEY
@@ -23,16 +24,14 @@ using System.Threading.Tasks;
 internal static class Program
 {
     // ====== API ======
-    // Strict Tool Calls requires beta endpoint per DeepSeek docs
-    private const string DeepSeekUrl = "https://api.deepseek.com/beta/chat/completions";
+    private const string DeepSeekUrl = "https://api.deepseek.com/chat/completions";
     private const string DefaultModel = "deepseek-chat";
 
     // Defaults (can be overridden by CLI args)
     private const int DefaultMaxTokens = 900;
     private const double DefaultTemperature = 0.7;
 
-    // Tool Calls strict is often slower; 12s is too aggressive in practice.
-    private const int TimeoutSeconds = 45;
+    private const int TimeoutSeconds = 12;
 
     // ====== Output ======
     private const string CsvName = "llm_experiment_output.csv";
@@ -42,7 +41,7 @@ internal static class Program
     private const int AffinityDeltaMin = -5;
     private const int AffinityDeltaMax = 5;
 
-    private const int NextFloorMin = 0;
+    private const int NextFloorMin = 0;   // now 0 is always allowed
     private const int NextFloorMax = 4;
     private const int InstantMin = 0;
     private const int InstantMax = 3;
@@ -75,14 +74,14 @@ internal static class Program
         "WeaponExplosionOnHit",
     };
 
-    private static readonly (string A, string B)[] Contradictions =
-    {
-        ("Heal", "LoseHP"),
-        ("PlayerMaxHPUp", "PlayerMaxHPDown"),
-        ("PlayerAttackUp", "PlayerAttackDown"),
-        ("PlayerAttackSpeedUp", "PlayerAttackSpeedDown"),
-        ("AllRoomsMonsterExceptBossAndSpawn", "AllRoomsRewardExceptBossAndSpawn"),
-    };
+private static readonly (string A, string B)[] Contradictions =
+{
+    ("Heal", "LoseHP"),
+    ("PlayerMaxHPUp", "PlayerMaxHPDown"),
+    ("PlayerAttackUp", "PlayerAttackDown"),
+    ("PlayerAttackSpeedUp", "PlayerAttackSpeedDown"),
+    ("AllRoomsMonsterExceptBossAndSpawn", "AllRoomsRewardExceptBossAndSpawn"),
+};
 
     private static readonly string[] LeakageMarkers =
     {
@@ -114,7 +113,7 @@ internal static class Program
     {
         try
         {
-            int runs = 200;
+            int runs = 364;
             if (args.Length >= 1 && int.TryParse(args[0], out int n) && n > 0) runs = n;
 
             string model = (args.Length >= 2 && !string.IsNullOrWhiteSpace(args[1])) ? args[1].Trim() : DefaultModel;
@@ -125,6 +124,11 @@ internal static class Program
             double temperature = DefaultTemperature;
             if (args.Length >= 4 && double.TryParse(args[3], NumberStyles.Float, CultureInfo.InvariantCulture, out double t) && t >= 0.0 && t <= 2.0)
                 temperature = t;
+
+            // ✅ NEW: deterministic base seed for reproducible & fair comparisons across methods
+            int baseSeed = 114514;
+            if (args.Length >= 5 && int.TryParse(args[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int bs))
+                baseSeed = bs;
 
             string apiKey = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(apiKey))
@@ -143,14 +147,12 @@ internal static class Program
 
             using (var http = CreateHttpClient(apiKey))
             {
-                Console.WriteLine($"Mode       : Tool Calls (strict)");
-                Console.WriteLine($"Endpoint   : {DeepSeekUrl}");
                 Console.WriteLine($"Model      : {model}");
                 Console.WriteLine($"CSV        : {outPath}");
                 Console.WriteLine($"Runs       : {runs} (run_id start: {runIdStart})");
                 Console.WriteLine($"max_tokens : {maxTokens}");
                 Console.WriteLine($"temp       : {temperature.ToString(CultureInfo.InvariantCulture)}");
-                Console.WriteLine($"timeout    : {TimeoutSeconds}s");
+                Console.WriteLine($"base_seed  : {baseSeed}");
                 Console.WriteLine("----");
 
                 long totalLatencyMs = 0;
@@ -161,12 +163,12 @@ internal static class Program
                 int parseOk = 0, schemaOk = 0, semanticOk = 0, allOk = 0;
                 int usageCount = 0;
 
-                bool printedParseSample = false;
-
                 for (int i = 0; i < runs; i++)
                 {
                     int runId = runIdStart + i;
-                    int seed = unchecked((int)DateTime.UtcNow.Ticks) ^ unchecked(runId * unchecked((int)0x9E3779B1));
+
+                    // ✅ Deterministic seed (no UtcNow.Ticks), ensures identical inputs for same runId+baseSeed
+                    int seed = unchecked(baseSeed + runId * 10007);
                     var rng = new Random(seed);
 
                     var input = BuildExperimentInput(rng);
@@ -188,16 +190,6 @@ internal static class Program
 
                     ParsedDecision parsed;
                     EvalResult eval = EvaluateCompliance(api.ContentText, out parsed);
-
-                    if (!eval.ParseOk && !printedParseSample)
-                    {
-                        printedParseSample = true;
-                        string sample = api.ContentText ?? "";
-                        if (sample.Length > 800) sample = sample.Substring(0, 800);
-                        Console.WriteLine("---- PARSE FAIL SAMPLE (first 800 chars) ----");
-                        Console.WriteLine(sample);
-                        Console.WriteLine("--------------------------------------------");
-                    }
 
                     if (eval.ParseOk) parseOk++;
                     if (eval.SchemaOk) schemaOk++;
@@ -256,13 +248,13 @@ internal static class Program
                 if (usageCount > 0)
                 {
                     Console.WriteLine("---- Token Usage (from API usage field) ----");
-                    Console.WriteLine($"UsageRows            : {usageCount}/{runs}");
-                    Console.WriteLine($"TotalTokens          : {totalTokens}");
-                    Console.WriteLine($"TotalPromptTokens    : {totalPromptTokens}");
+                    Console.WriteLine($"UsageRows           : {usageCount}/{runs}");
+                    Console.WriteLine($"TotalTokens         : {totalTokens}");
+                    Console.WriteLine($"TotalPromptTokens   : {totalPromptTokens}");
                     Console.WriteLine($"TotalCompletionTokens: {totalCompletionTokens}");
-                    Console.WriteLine($"AvgTotalTokens       : {(totalTokens / (double)usageCount):0.0}");
-                    Console.WriteLine($"AvgPromptTokens      : {(totalPromptTokens / (double)usageCount):0.0}");
-                    Console.WriteLine($"AvgCompletionTokens  : {(totalCompletionTokens / (double)usageCount):0.0}");
+                    Console.WriteLine($"AvgTotalTokens      : {(totalTokens / (double)usageCount):0.0}");
+                    Console.WriteLine($"AvgPromptTokens     : {(totalPromptTokens / (double)usageCount):0.0}");
+                    Console.WriteLine($"AvgCompletionTokens : {(totalCompletionTokens / (double)usageCount):0.0}");
                 }
                 else
                 {
@@ -290,7 +282,7 @@ internal static class Program
         public double MemC;
         public string PlayerText;
         public string HistorySummary;
-        public bool PlayerRequestsNoEvents;
+        public bool PlayerRequestsNoEvents; // kept for data variety; no longer used as a hard rule
     }
 
     private sealed class Persona
@@ -356,40 +348,88 @@ internal static class Program
 
     private static Prompts BuildPrompts(ExperimentInput input)
     {
-        // Tool Calls mode: DO NOT repeat JSON/schema in prompt (avoid over-formatting & leakage).
         string sys =
-            $@"你是游戏NPC【{FixedPersona.NpcName}】的决策与对话引擎。使用中文回复。
+            $@"你是地牢NPC【{FixedPersona.NpcName}】。仅输出一个JSON对象，不得输出任何额外文本。
 
-【人格】
-- 性格：{FixedPersona.PersonaText}
-- 背景：{FixedPersona.Background}
-- 说话风格：{FixedPersona.SpeakingStyle}
+固定结构（字段不可改）：
+{{
+  ""npc_reply"": ""..."",
+  ""affinity_delta"": 0,
+  ""next_floor_events"": [],
+  ""instant_events"": [],
+  ""history_event_summary_delta"": """"
+}}
 
-【重要】
-你必须通过工具调用提交你的决策；不要在普通文本里输出任何结构化内容或格式说明。";
+字段规则：
+npc_reply：中文2~4句，≤160字，不得提及系统/规则/JSON/提示词。
+affinity_delta：整数，-5~5。
+next_floor_events：0~4项。
+instant_events：0~3项。
+数组元素格式：{{ ""eventType"": ""..."", ""value"": number }}。
+同一数组内eventType不可重复。
+history_event_summary_delta：字符串（可为空）。
+所有value ≥ 0。
+
+位置强制：
+只能在next_floor_events：
+LowVision, EnemyMoveSpeedUp, PlayerDealMoreDamage, PlayerReceiveMoreDamage,
+AllRoomsMonsterExceptBossAndSpawn, AllRoomsRewardExceptBossAndSpawn,
+PlayerAttackSpeedUp, PlayerAttackSpeedDown。
+
+只能在instant_events：
+GainExp, Heal, LoseHP, PlayerMaxHPUp, PlayerMaxHPDown,
+PlayerAttackUp, PlayerAttackDown,
+WeaponPenetrationUp, WeaponExtraProjectileUp,
+WeaponBulletSizeUp, WeaponExplosionOnHit。
+
+value范围：
+LowVision 0.35~1.0
+EnemyMoveSpeedUp 0.0~3.0
+PlayerDealMoreDamage 0.0~3.0
+PlayerReceiveMoreDamage 0.0~3.0
+PlayerAttackSpeedUp 0.0~3.0
+PlayerAttackSpeedDown 0.0~0.9
+AllRoomsMonsterExceptBossAndSpawn 0
+AllRoomsRewardExceptBossAndSpawn 0
+GainExp 10~100整数
+Heal 1~50整数
+LoseHP 1~50整数
+PlayerMaxHPUp 1~20整数
+PlayerMaxHPDown 1~20整数
+PlayerAttackUp 1~5整数
+PlayerAttackDown 1~5整数
+WeaponPenetrationUp 0.0~3.0
+WeaponExtraProjectileUp 0.0~3.0
+WeaponExplosionOnHit 0.0~3.0
+WeaponBulletSizeUp 0.0~2.0
+
+互斥（不可同时出现，跨数组也算）：
+Heal+LoseHP
+PlayerMaxHPUp+PlayerMaxHPDown
+PlayerAttackUp+PlayerAttackDown
+PlayerAttackSpeedUp+PlayerAttackSpeedDown
+AllRoomsMonsterExceptBossAndSpawn+AllRoomsRewardExceptBossAndSpawn
+
+允许叠加：
+PlayerAttackUp 与 PlayerAttackSpeedUp 可同时存在（分别位于instant/next_floor）。";
 
         string usr =
-            $@"关系 affinity：{input.Affinity}
-当前层：{input.FloorIndex}
+            $@"affinity={input.Affinity}; floor={input.FloorIndex}
 
-记忆：
+memory:
 {input.HistorySummary}
 
-玩家发言：
-{input.PlayerText}
-
-写作要求（只影响 npc_reply 的语言表现）：
-先回应情绪与意图 → 给态度 → 自然延伸（不强制提问）";
+player:
+{input.PlayerText}";
 
         return new Prompts { System = sys, User = usr };
     }
 
-    // ===================== HTTP =====================
     private sealed class ApiCallResult
     {
         public int? HttpStatusCode;
         public string OuterRaw;
-        public string ContentText; // tool_calls[0].function.arguments (normalized JSON object string)
+        public string ContentText;
 
         public long? PromptTokens;
         public long? CompletionTokens;
@@ -398,350 +438,145 @@ internal static class Program
 
     private static HttpClient CreateHttpClient(string apiKey)
     {
-        var handler = new HttpClientHandler();
-
-        // 很多校园网/公司网环境下会因为吊销检查失败导致 SSL 握手异常
-        handler.CheckCertificateRevocationList = false;
-
-        // 先禁用代理排查问题（如果你必须走代理，再改为 true）
-        handler.UseProxy = false;
-
-        // 强制 TLS 1.2（旧系统必须显式指定）
-        try
-        {
-            System.Net.ServicePointManager.SecurityProtocol =
-                System.Net.SecurityProtocolType.Tls12;
-        }
-        catch { }
-
-        var http = new HttpClient(handler);
-
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", apiKey);
-
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("ExperimentsRunner/1.0");
-
+        var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         return http;
     }
 
-private static async Task<ApiCallResult> CallDeepSeekAsync(
-    HttpClient http,
-    string model,
-    string systemPrompt,
-    string userPrompt,
-    int maxTokens,
-    double temperature)
-{
-    string toolsJson = BuildToolsJson();
-
-    // ✅ 关键：强制指定函数，而不是 "required"
-    string toolChoiceJson =
-        "{" +
-        "\"type\":\"function\"," +
-        "\"function\":{\"name\":\"submit_npc_decision\"}" +
-        "}";
-
-    string body =
-        "{" +
-        "\"model\":\"" + JsonEscape(model) + "\"," +
-        "\"max_tokens\":" + maxTokens.ToString(CultureInfo.InvariantCulture) + "," +
-        "\"temperature\":" + temperature.ToString(CultureInfo.InvariantCulture) + "," +
-        "\"tools\":" + toolsJson + "," +
-        "\"tool_choice\":" + toolChoiceJson + "," +
-        "\"parallel_tool_calls\":false," +  // ✅ 避免多 tool_call 干扰
-        "\"messages\":[" +
-            "{\"role\":\"system\",\"content\":\"" + JsonEscape(systemPrompt) + "\"}," +
-            "{\"role\":\"user\",\"content\":\"" + JsonEscape(userPrompt) + "\"}" +
-        "]" +
-        "}";
-
-    const int maxAttempts = 3;
-
-    for (int attempt = 1; attempt <= maxAttempts; attempt++)
+    private static async Task<ApiCallResult> CallDeepSeekAsync(
+        HttpClient http,
+        string model,
+        string systemPrompt,
+        string userPrompt,
+        int maxTokens,
+        double temperature)
     {
-        try
+        // Manual JSON payload (avoid any JSON libs)
+        string body =
+            "{" +
+            "\"model\":\"" + JsonEscape(model) + "\"," +
+            "\"response_format\":{\"type\":\"json_object\"}," +
+            "\"max_tokens\":" + maxTokens.ToString(CultureInfo.InvariantCulture) + "," +
+            "\"temperature\":" + temperature.ToString(CultureInfo.InvariantCulture) + "," +
+            "\"messages\":[" +
+                "{\"role\":\"system\",\"content\":\"" + JsonEscape(systemPrompt) + "\"}," +
+                "{\"role\":\"user\",\"content\":\"" + JsonEscape(userPrompt) + "\"}" +
+            "]" +
+            "}";
+
+        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds)))
+        using (var req = new HttpRequestMessage(HttpMethod.Post, DeepSeekUrl))
         {
-            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(TimeoutSeconds)))
-            using (var req = new HttpRequestMessage(HttpMethod.Post, DeepSeekUrl))
+            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+            using (var resp = await http.SendAsync(req, cts.Token))
             {
-                req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                string outer = await resp.Content.ReadAsStringAsync();
+                string content = ExtractContentField(outer); // may be null
 
-                using (var resp = await http.SendAsync(req, cts.Token))
+                long? pt, ct, tt;
+                ExtractUsageTokens(outer, out pt, out ct, out tt);
+
+                return new ApiCallResult
                 {
-                    string outer = await resp.Content.ReadAsStringAsync();
+                    HttpStatusCode = (int)resp.StatusCode,
+                    OuterRaw = outer,
+                    ContentText = content,
+                    PromptTokens = pt,
+                    CompletionTokens = ct,
+                    TotalTokens = tt
+                };
+            }
+        }
+    }
 
-                    string toolName, toolArgsRaw;
-                    ExtractFirstToolCallArguments(outer, out toolName, out toolArgsRaw);
+    // Extract choices[0].message.content from outer JSON WITHOUT full parser
+    private static string ExtractContentField(string outer)
+    {
+        if (string.IsNullOrWhiteSpace(outer)) return null;
 
-                    // ✅ toolArgsRaw 可能是 string / 或带包裹（你已有 Normalize）
-                    string toolArgs = NormalizeToolArguments(toolArgsRaw);
+        int idx = outer.IndexOf("\"content\"", StringComparison.Ordinal);
+        if (idx < 0) return null;
 
-                    long? pt, ct, tt;
-                    ExtractUsageTokens(outer, out pt, out ct, out tt);
+        idx = outer.IndexOf(':', idx);
+        if (idx < 0) return null;
+        idx++;
 
-                    return new ApiCallResult
+        while (idx < outer.Length && char.IsWhiteSpace(outer[idx])) idx++;
+        if (idx >= outer.Length) return null;
+
+        if (outer[idx] == '"')
+        {
+            idx++;
+            var sb = new StringBuilder();
+            bool esc = false;
+
+            while (idx < outer.Length)
+            {
+                char c = outer[idx++];
+                if (esc)
+                {
+                    esc = false;
+                    switch (c)
                     {
-                        HttpStatusCode = (int)resp.StatusCode,
-                        OuterRaw = outer,
-                        ContentText = toolArgs,
-                        PromptTokens = pt,
-                        CompletionTokens = ct,
-                        TotalTokens = tt
-                    };
+                        case '"': sb.Append('"'); break;
+                        case '\\': sb.Append('\\'); break;
+                        case '/': sb.Append('/'); break;
+                        case 'b': sb.Append('\b'); break;
+                        case 'f': sb.Append('\f'); break;
+                        case 'n': sb.Append('\n'); break;
+                        case 'r': sb.Append('\r'); break;
+                        case 't': sb.Append('\t'); break;
+                        case 'u':
+                            if (idx + 4 <= outer.Length)
+                            {
+                                string hex = outer.Substring(idx, 4);
+                                if (int.TryParse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int code))
+                                    sb.Append((char)code);
+                                idx += 4;
+                            }
+                            break;
+                        default:
+                            sb.Append(c);
+                            break;
+                    }
+                    continue;
+                }
+
+                if (c == '\\') { esc = true; continue; }
+                if (c == '"') return sb.ToString();
+                sb.Append(c);
+            }
+            return null;
+        }
+
+        if (outer[idx] == '{')
+        {
+            int start = idx;
+            int depth = 0;
+            bool inStr = false;
+            bool esc2 = false;
+            while (idx < outer.Length)
+            {
+                char c = outer[idx++];
+                if (inStr)
+                {
+                    if (esc2) { esc2 = false; continue; }
+                    if (c == '\\') { esc2 = true; continue; }
+                    if (c == '"') { inStr = false; continue; }
+                    continue;
+                }
+                if (c == '"') { inStr = true; continue; }
+                if (c == '{') depth++;
+                if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0) return outer.Substring(start, idx - start);
                 }
             }
-        }
-        catch (HttpRequestException ex)
-        {
-            string detail = ex.Message;
-            if (ex.InnerException != null)
-                detail += " | INNER: " + ex.InnerException.GetType().Name + " - " + ex.InnerException.Message;
-
-            if (attempt < maxAttempts)
-            {
-                Thread.Sleep(300 * attempt);
-                continue;
-            }
-
-            return new ApiCallResult
-            {
-                HttpStatusCode = null,
-                OuterRaw = "CLIENT_ERROR: HttpRequestException. " + detail,
-                ContentText = null
-            };
-        }
-        catch (TaskCanceledException ex)
-        {
-            if (attempt < maxAttempts)
-            {
-                Thread.Sleep(300 * attempt);
-                continue;
-            }
-
-            return new ApiCallResult
-            {
-                HttpStatusCode = null,
-                OuterRaw = "CLIENT_ERROR: Timeout. " + ex.Message,
-                ContentText = null
-            };
-        }
-        catch (Exception ex)
-        {
-            return new ApiCallResult
-            {
-                HttpStatusCode = null,
-                OuterRaw = "CLIENT_ERROR: " + ex.GetType().Name + ". " + ex.Message,
-                ContentText = null
-            };
-        }
-    }
-
-    return new ApiCallResult
-    {
-        HttpStatusCode = null,
-        OuterRaw = "CLIENT_ERROR: Unknown",
-        ContentText = null
-    };
-}
-
-    private static string BuildToolsJson()
-{
-    string nextEnum = string.Join(",", QuoteEnum(NextFloorWhitelist));
-    string instEnum = string.Join(",", QuoteEnum(InstantWhitelist));
-
-    string nextEventItem =
-        "{" +
-        "\"type\":\"object\"," +
-        "\"properties\":{" +
-            "\"eventType\":{\"type\":\"string\",\"enum\":[" + nextEnum + "]}," +
-            "\"value\":{\"type\":\"number\"}" +
-        "}," +
-        "\"required\":[\"eventType\",\"value\"]," +
-        "\"additionalProperties\":false" +
-        "}";
-
-    string instEventItem =
-        "{" +
-        "\"type\":\"object\"," +
-        "\"properties\":{" +
-            "\"eventType\":{\"type\":\"string\",\"enum\":[" + instEnum + "]}," +
-            "\"value\":{\"type\":\"number\"}" +
-        "}," +
-        "\"required\":[\"eventType\",\"value\"]," +
-        "\"additionalProperties\":false" +
-        "}";
-
-    // ✅ strict 要求：object 的 properties 必须全部 required + additionalProperties=false
-    string parameters =
-        "{" +
-        "\"type\":\"object\"," +
-        "\"properties\":{" +
-            "\"npc_reply\":{\"type\":\"string\"}," +
-            "\"affinity_delta\":{\"type\":\"integer\"}," +
-            "\"next_floor_events\":{\"type\":\"array\",\"items\":" + nextEventItem + "}," +
-            "\"instant_events\":{\"type\":\"array\",\"items\":" + instEventItem + "}," +
-            "\"history_event_summary_delta\":{\"type\":\"string\"}" +
-        "}," +
-        "\"required\":[\"npc_reply\",\"affinity_delta\",\"next_floor_events\",\"instant_events\",\"history_event_summary_delta\"]," +
-        "\"additionalProperties\":false" +
-        "}";
-
-    string tool =
-        "{" +
-          "\"type\":\"function\"," +
-          "\"function\":{" +
-            "\"name\":\"submit_npc_decision\"," +
-            "\"strict\":true," +
-            "\"description\":\"Submit NPC decision as a structured object.\"," +
-            "\"parameters\":" + parameters +
-          "}" +
-        "}";
-
-    return "[" + tool + "]";
-}
-
-    private static IEnumerable<string> QuoteEnum(HashSet<string> set)
-    {
-        foreach (var s in set) yield return "\"" + JsonEscape(s) + "\"";
-    }
-
-    // Parse outer JSON and extract choices[0].message.tool_calls[0].function.arguments
-    // arguments may be a string or (rarely) an object depending on implementation.
-    private static void ExtractFirstToolCallArguments(string outer, out string toolName, out string toolArgs)
-    {
-        toolName = null;
-        toolArgs = null;
-
-        if (string.IsNullOrWhiteSpace(outer)) return;
-
-        try
-        {
-            var p = new MiniJsonParser(outer);
-            JsonValue root = p.ParseRootStrictObject();
-
-            var obj = root.AsObject();
-            var choices = obj.GetArray("choices", required: true);
-            if (choices == null || choices.Count <= 0) return;
-
-            var choice0 = choices[0].AsObject();
-            var message = choice0.GetObject("message", required: true);
-
-            var toolCalls = message.GetArray("tool_calls", required: true);
-            if (toolCalls == null || toolCalls.Count <= 0) return;
-
-            var tc0 = toolCalls[0].AsObject();
-            var fn = tc0.GetObject("function", required: true);
-
-            toolName = fn.GetString("name", required: true);
-
-            // Robust: arguments can be string or object
-            toolArgs = TryGetArgumentsAsStringOrObjectJson(fn);
-        }
-        catch
-        {
-            // best-effort: leave nulls; EvaluateCompliance will mark as parse failure.
-        }
-    }
-
-    private static string TryGetArgumentsAsStringOrObjectJson(Dictionary<string, JsonValue> fnObj)
-    {
-        if (!fnObj.TryGetValue("arguments", out JsonValue v))
-            return null;
-
-        if (v.Kind == JsonKind.String)
-            return (string)v.Value;
-
-        if (v.Kind == JsonKind.Object)
-        {
-            var o = v.AsObject();
-            string npc = o.GetString("npc_reply", required: true) ?? "";
-            int ad = o.GetInt("affinity_delta", required: true);
-
-            var nextArr = o.GetArray("next_floor_events", required: true);
-            var instArr = o.GetArray("instant_events", required: true);
-            string hist = o.GetStringAllowNull("history_event_summary_delta", required: true) ?? "";
-
-            return BuildDecisionJsonString(npc, ad, nextArr, instArr, hist);
         }
 
         return null;
-    }
-
-    private static string BuildDecisionJsonString(string npc, int ad, List<JsonValue> nextArr, List<JsonValue> instArr, string hist)
-    {
-        var sb = new StringBuilder();
-        sb.Append("{");
-        sb.Append("\"npc_reply\":\"").Append(JsonEscape(npc)).Append("\",");
-        sb.Append("\"affinity_delta\":").Append(ad.ToString(CultureInfo.InvariantCulture)).Append(",");
-        sb.Append("\"next_floor_events\":").Append(EmitEventArray(nextArr)).Append(",");
-        sb.Append("\"instant_events\":").Append(EmitEventArray(instArr)).Append(",");
-        sb.Append("\"history_event_summary_delta\":\"").Append(JsonEscape(hist)).Append("\"");
-        sb.Append("}");
-        return sb.ToString();
-    }
-
-    private static string EmitEventArray(List<JsonValue> arr)
-    {
-        var sb = new StringBuilder();
-        sb.Append("[");
-        for (int i = 0; i < arr.Count; i++)
-        {
-            if (i > 0) sb.Append(",");
-            var o = arr[i].AsObject();
-            string et = o.GetString("eventType", required: true) ?? "";
-            double v = o.GetDouble("value", required: true);
-
-            sb.Append("{");
-            sb.Append("\"eventType\":\"").Append(JsonEscape(et)).Append("\",");
-            sb.Append("\"value\":").Append(v.ToString(CultureInfo.InvariantCulture));
-            sb.Append("}");
-        }
-        sb.Append("]");
-        return sb.ToString();
-    }
-
-    // Normalize tool arguments so EvaluateCompliance can parse it as strict JSON object.
-    private static string NormalizeToolArguments(string s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-
-        s = s.Trim();
-
-        // Case A: double-encoded JSON string literal: "\"{...}\""
-        if (s.Length >= 2 && s[0] == '"' && s[s.Length - 1] == '"')
-        {
-            try
-            {
-                var p = new MiniJsonParser(s);
-                var v = p.ParseAnyValueForNormalization();
-                if (v.Kind == JsonKind.String)
-                {
-                    s = ((string)v.Value ?? "").Trim();
-                }
-            }
-            catch
-            {
-                // fall through
-            }
-        }
-
-        // Case B: extra wrappers (markdown fences or leading text): extract first {...} block
-        if (s.Length > 0 && s[0] != '{')
-        {
-            int firstBrace = s.IndexOf('{');
-            int lastBrace = s.LastIndexOf('}');
-            if (firstBrace >= 0 && lastBrace > firstBrace)
-            {
-                string maybe = s.Substring(firstBrace, lastBrace - firstBrace + 1).Trim();
-                if (maybe.Length > 1 && maybe[0] == '{' && maybe[maybe.Length - 1] == '}')
-                    s = maybe;
-            }
-        }
-
-        // Remove UTF-8 BOM if present
-        if (s.Length > 0 && s[0] == '\uFEFF') s = s.Substring(1);
-
-        return s.Trim();
     }
 
     // Extract usage.prompt_tokens / usage.completion_tokens / usage.total_tokens (best-effort)
@@ -753,9 +588,11 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
         int u = outer.IndexOf("\"usage\"", StringComparison.Ordinal);
         if (u < 0) return;
 
+        // find '{' after "usage"
         int brace = outer.IndexOf('{', u);
         if (brace < 0) return;
 
+        // extract balanced object for usage
         int start = brace;
         int idx = brace;
         int depth = 0;
@@ -801,7 +638,7 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
         while (i < objJson.Length && char.IsWhiteSpace(objJson[i])) i++;
 
         int start = i;
-        if (i < objJson.Length && objJson[i] == '-') i++;
+        if (i < objJson.Length && objJson[i] == '-') i++; // allow negative but will fail int parse if needed
         bool any = false;
         while (i < objJson.Length && char.IsDigit(objJson[i])) { i++; any = true; }
         if (!any) return null;
@@ -960,6 +797,7 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
                 if (!IsValueValidForEvent(e.EventType, e.Value)) return FailSemantic("instant_events invalid value: " + e.EventType + "=" + e.Value, eval);
             }
 
+            // contradiction across both arrays
             var allTypes = new HashSet<string>(StringComparer.Ordinal);
             foreach (var e in parsed.NextFloorEvents) allTypes.Add(e.EventType);
             foreach (var e in parsed.InstantEvents) allTypes.Add(e.EventType);
@@ -1224,7 +1062,7 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
     private sealed class JsonValue
     {
         public JsonKind Kind;
-        public object Value;
+        public object Value; // null/bool/double/string/List<JsonValue>/Dictionary<string,JsonValue>
 
         public Dictionary<string, JsonValue> AsObject()
         {
@@ -1247,16 +1085,6 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
             SkipWs();
             if (_i != _s.Length) throw new Exception("Trailing characters");
             if (v.Kind != JsonKind.Object) throw new Exception("Root not object");
-            return v;
-        }
-
-        // For normalization: allow any JSON value (string/object/array/number/bool/null)
-        public JsonValue ParseAnyValueForNormalization()
-        {
-            SkipWs();
-            var v = ParseValue();
-            SkipWs();
-            if (_i != _s.Length) throw new Exception("Trailing characters");
             return v;
         }
 
@@ -1436,7 +1264,7 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
         }
     }
 
-    // Dictionary helpers
+    // Dictionary helpers (no JsonObjectView)
     private static string GetString(this Dictionary<string, JsonValue> obj, string key, bool required)
     {
         if (!obj.TryGetValue(key, out JsonValue v))
@@ -1493,16 +1321,5 @@ private static async Task<ApiCallResult> CallDeepSeekAsync(
         }
         if (v.Kind != JsonKind.Array) throw new Exception("Type mismatch array: " + key);
         return (List<JsonValue>)v.Value;
-    }
-
-    private static Dictionary<string, JsonValue> GetObject(this Dictionary<string, JsonValue> obj, string key, bool required)
-    {
-        if (!obj.TryGetValue(key, out JsonValue v))
-        {
-            if (required) throw new Exception("Missing: " + key);
-            return null;
-        }
-        if (v.Kind != JsonKind.Object) throw new Exception("Type mismatch object: " + key);
-        return v.AsObject();
     }
 }

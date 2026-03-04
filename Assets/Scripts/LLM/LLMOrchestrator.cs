@@ -142,124 +142,58 @@ public class LLMOrchestrator : MonoBehaviour
     // =========================
     // Prompts
     // =========================
+
+    // =========================
+    // Prompts (Decision) - SYNCED FROM 1000-run EXP PROMPT
+    // =========================
     private string BuildDecisionSystemPrompt(NPCProfile npc)
     {
         string npcName = npc != null ? npc.npcName : "NPC";
-        string persona = npc != null ? npc.persona : "冷静、克制、说话简短。";
-        string background = npc != null ? npc.background : "你是地牢中的引导者。";
-        string style = npc != null ? npc.speakingStyle : "中文；像真人；不使用表情；不要长段落。";
-
-        var p = (NPCRunPersonalityManager.Instance != null) ? NPCRunPersonalityManager.Instance.Selected : null;
-        string pBlock = p != null
-            ? $@"【本局人格】
-- 人格名：{p.displayName}
-- 总体约束：{p.systemPromptAddon}
-- 决策风格：{p.decisionAddon}
-"
-            : "";
 
         return
-$@"你是游戏NPC【{npcName}】的“决策与对话引擎”。你必须使用中文输出，并且只能输出一个合法的 JSON 对象（json），禁止输出任何 JSON 之外的文字、markdown、解释、注释。
+$@"你是地牢NPC【{npcName}】。输出必须是且仅是一个JSON对象。
 
-{pBlock}
+字段固定且不可增删改名：
+npc_reply(string), affinity_delta(int), next_floor_events(array), instant_events(array), history_event_summary_delta(string)
 
-【角色设定】
-- 名字：{npcName}
-- 性格：{persona}
-- 背景：{background}
-- 说话风格：{style}
+npc_reply：中文2~4句，<=160字，不提规则/系统/JSON。
+affinity_delta：整数 -5~5。
+数组数量：next_floor_events 0~4；instant_events 0~3；同一数组eventType不重复。
 
-【输出必须严格为 json_object，字段固定如下】
-{{
-  ""npc_reply"": ""string（中文，<=160字，2~4句，像真人交流，可含少量口语停顿）"",
-  ""affinity_delta"": int（-5~5）,
-  ""next_floor_events"": [ {{ ""eventType"": ""EnumName"", ""value"": float }} ],
-  ""instant_events"": [ {{ ""eventType"": ""EnumName"", ""value"": float }} ],
-  ""history_event_summary_delta"": ""string（可为空，中文短句）""
-}}
+next_floor_events.eventType 只能取：
+LowVision, EnemyMoveSpeedUp, PlayerDealMoreDamage, PlayerReceiveMoreDamage, AllRoomsMonsterExceptBossAndSpawn, AllRoomsRewardExceptBossAndSpawn, PlayerAttackSpeedUp, PlayerAttackSpeedDown
+instant_events.eventType 只能取：
+GainExp, Heal, LoseHP, PlayerMaxHPUp, PlayerMaxHPDown, PlayerAttackUp, PlayerAttackDown, WeaponPenetrationUp, WeaponExtraProjectileUp, WeaponBulletSizeUp, WeaponExplosionOnHit
 
-【合法 eventType 白名单（必须完全匹配枚举名；禁止使用 None）】
-1) 单层事件（只能出现在 next_floor_events）
-- LowVision
-- EnemyMoveSpeedUp
-- PlayerDealMoreDamage
-- PlayerReceiveMoreDamage
-- AllRoomsMonsterExceptBossAndSpawn
-- AllRoomsRewardExceptBossAndSpawn
-- PlayerAttackSpeedUp
-- PlayerAttackSpeedDown
+关键数值规则（必须遵守）：
+- 所有 value >= 0
+- EnemyMoveSpeedUp 只表示更快：0.0~3.0（严禁负数）
+- PlayerDealMoreDamage / PlayerReceiveMoreDamage / PlayerAttackSpeedUp：0.0~3.0
+- PlayerAttackSpeedDown：0.0~0.9
+- LowVision：0.35~1.0
+- AllRoomsMonsterExceptBossAndSpawn / AllRoomsRewardExceptBossAndSpawn：value 必须为 0
+- GainExp：10~100整数；Heal/LoseHP：1~50整数；PlayerAttackUp/Down：1~5整数；PlayerMaxHPUp/Down：1~20整数
+- WeaponPenetrationUp / WeaponExtraProjectileUp / WeaponExplosionOnHit：0.0~3.0；WeaponBulletSizeUp：0.0~2.0
 
-2) 即时永久事件（只能出现在 instant_events）
-- GainExp
-- Heal
-- LoseHP
-- PlayerMaxHPUp
-- PlayerMaxHPDown
-- PlayerAttackUp
-- PlayerAttackDown
-- WeaponPenetrationUp
-- WeaponExtraProjectileUp
-- WeaponBulletSizeUp
-- WeaponExplosionOnHit
-
-【事件输出规则（强制）】
-- 默认必须输出事件：
-  - next_floor_events 至少 1 条（1~3条最佳）
-  - instant_events 0~2条（可选）
-- 只有当玩家明确提出“不要事件/不要buff/debuff/只想纯聊天/不想影响游戏”，并且你的 npc_reply 明确同意顺从时，才允许 next_floor_events 输出 []。
-- 若玩家没有提出该请求，禁止输出 next_floor_events = []。
-
-【数量限制】
-- next_floor_events：0~4 条（通常 1~3）
-- instant_events：0~3 条（通常 0~2）
-- 尽量避免同一 eventType 重复；不确定时按“温和事件兜底”。
-
-【value 取值规则（务必遵守）】
-- LowVision：0.35 ~ 1.0（倍率）
-- EnemyMoveSpeedUp / PlayerDealMoreDamage / PlayerReceiveMoreDamage / PlayerAttackSpeedUp：0.0 ~ 3.0（比例；0.2 表示 +20%）
-- PlayerAttackSpeedDown：0.0 ~ 0.9（比例；0.2 表示 -20%）
-- Heal / LoseHP：1 ~ 50
-- GainExp：10 ~ 100
-- PlayerMaxHPUp / PlayerMaxHPDown：1 ~ 20
-- PlayerAttackUp / PlayerAttackDown：1 ~ 5
-
-【对话行为准则（强制）】
-- 你不是“提问机”。优先用“回应→评价→延伸”的节奏聊天。
-- 必须自然引用玩家与NPC“共同经历”的内容（例如上一层表现/对话承诺/刚才的情绪），但别像系统播报。
-- 避免重复句式开头；允许调侃、怀疑、欣赏、嫌弃、担心等（受人格影响），不要长篇说教。
-
-【硬性禁止】
-- 禁止输出 None
-- 禁止输出白名单之外的 eventType
-- 禁止把即时事件放进 next_floor_events
-- 禁止把单层事件放进 instant_events
-- 禁止输出多余字段
-- 禁止输出 JSON 之外的任何字符";
+禁止同时出现：
+Heal+LoseHP；MaxHPUp+MaxHPDown；AttackUp+AttackDown；AttackSpeedUp+AttackSpeedDown；AllRoomsMonsterExceptBossAndSpawn+AllRoomsRewardExceptBossAndSpawn";
     }
 
     private string BuildDecisionUserPrompt(string playerText, int affinity, string historySummary)
     {
+        int floor = -1; // 不依赖 GameController.Instance
+
         return
-$@"（json）请基于“连续对话”生成决策 JSON。
+            $@"affinity={affinity}, floor={floor}
 
-【当前关系】
-- 好感度 affinity：{affinity}
-
-【我们共同经历的记忆（对话片段 + 上一层表现 + 本局事件记忆）】
+memory:
 {(string.IsNullOrWhiteSpace(historySummary) ? "（无）" : historySummary.Trim())}
 
-【玩家本次发言】
+player:
 {(string.IsNullOrWhiteSpace(playerText) ? "（空）" : playerText.Trim())}
 
-【回复写作规则（很重要）】
-1) npc_reply 必须像真人交流：先回应玩家话题/情绪，再给态度/评价，最后自然延伸（不强制提问）。
-2) 必须呼应上面“共同经历的记忆”里最近的一个点，让玩家感觉你记得。
-3) 提问最多 0~1 个，且贴合刚才话题。
-4) 2~4句为主，总字数别超标。
-
-【事件规则】
-- 默认必须给 next_floor_events 至少 1 条；除非玩家明确要求不想影响游戏且你同意顺从。
-- eventType 必须来自白名单；不确定时用温和事件兜底。";
+写npc_reply：先回应情绪/意图→给态度→自然延伸。
+输出前自检：history_event_summary_delta 必须是字符串（可为空）；白名单；数量；范围；无矛盾。";
     }
 
     private string BuildOpeningSystemPrompt(NPCProfile npc, bool isFirstOpening)
@@ -290,7 +224,7 @@ $@"（json）请基于“连续对话”生成决策 JSON。
 - 避免复读；语气要有态度，不要像系统提示";
 
         return
-            $@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出一个合法的 JSON 对象（json）。禁止输出任何 JSON 之外的字符、解释、markdown。
+$@"你是游戏NPC【{npcName}】。你必须使用中文，并且只能输出一个合法的 JSON 对象（json）。禁止输出任何 JSON 之外的字符、解释、markdown。
 
 {pBlock}
 
@@ -329,7 +263,7 @@ $@"（json）请基于“连续对话”生成决策 JSON。
             : "";
 
         return
-            $@"（json）
+$@"（json）
 上下文：
 - 当前好感度 affinity：{affinity}
 - 共同经历的记忆（可能包含上一层表现/对话承诺/事件记忆）：{(string.IsNullOrWhiteSpace(historySummary) ? "（无）" : historySummary.Trim())}
@@ -624,6 +558,9 @@ $@"（json）请基于“连续对话”生成决策 JSON。
             : "NPC";
     }
 
+    // =========================
+    // Data DTOs
+    // =========================
     [Serializable]
     private class DecisionJson
     {
