@@ -141,6 +141,9 @@ setx DEEPSEEK_API_KEY "your_api_key_here"
 - 26/2/27：完成 LLM 真实联网接入（DeepSeek JSON Object 输出）与调用抽象层（ApiKeyProvider/ILLMClient/Provider）；实现 LLMOrchestrator 业务编排（Decision JSON + Opening Line）；重构 NPCDecisionUI 状态机（OpeningWaiting/Typing/Waiting/Result），确定“开局固定首句、后续每次打开 UI 请求开场白”的稳定策略；引入本局人格系统（ScriptableObject 池随机抽取，整局固定）并支持 Prompt 注入，预留人格×好感度立绘切换能力。
 - 26/3/2: 扩展武器强化类型结构，在奖励层新增强化道具投放逻辑，并将武器强化事件整合至NPC事件系统以增强系统联动性。
 - 26/3/5: 进行了基于Prompt和Schema两种对JSON结构化输出的实验，对两种方式各采用了超过1000+次的实验，获取了二者的Token消耗，JSON合规率，响应延迟时间等数据。
+- 26/3/10：完成了基于 Prompt 约束、API JSON 输出、Schema 校验、Schema 重试 四种机制的实验，每种方式分别运行 1000 次。对实验结果的数据结构进行了整理，并完成了统计分析与可视化图表绘制。实验原始数据与分析结果见：
+“SakayoriIroha\实验数据\All”。
+
 
 
 ---
@@ -168,7 +171,7 @@ setx DEEPSEEK_API_KEY "your_api_key_here"
 
 ---
 
-# 大規模言語モデルに基づくゲームNPCの意思決定および対話システム
+# リアルタイムインタラクティブシステムにおける大規模言語モデルの構造化出力信頼性の研究
 
 ---
 
@@ -290,6 +293,8 @@ setx DEEPSEEK_API_KEY "your_api_key_here"
   本局人格システム（ScriptableObject プールからランダム抽出、セッション中固定）を導入し、Prompt 注入に対応。人格 × 好感度による立ち絵切替インターフェースを予約実装。
 - 26/3/2: 武器強化タイプ構造を拡張し、報酬階層に強化アイテム配置ロジックを追加するとともに、武器強化関連イベントをNPCイベントシステムへ統合した。
 - 26/3/5：JSON構造化出力に関して、Prompt方式とSchema方式の比較実験を実施。各方式で1000回以上の試行を行い、Token消費量・JSON整合率・応答遅延時間などのデータを収集した。
+26/3/10：Prompt 制約、API JSON 出力、Schema 検証、Schema リトライ の4種類の方式について、それぞれ 1000回の実験 を実施した。取得した実験データの構造を整理し、統計分析および可視化グラフの作成を行った。詳細なデータおよび分析結果は以下を参照：
+「SakayoriIroha\实验数据\All」。
 
 
 

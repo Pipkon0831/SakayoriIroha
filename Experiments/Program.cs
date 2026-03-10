@@ -37,7 +37,7 @@ internal static class Program
     // Defaults (can be overridden by CLI args)
     private const int DefaultMaxTokens = 900;
     private const double DefaultTemperature = 0.7;
-    private const int DefaultRunsPerMode = 20;
+    private const int DefaultRunsPerMode = 1000;
     private const int TimeoutSeconds = 12;
 
     // ====== Output ======
