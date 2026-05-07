@@ -26,6 +26,12 @@ MonoBehaviour:
   - "\u2026\u2026\u6211\u9700\u8981\u518D\u60F3\u60F3\u3002\u5148\u6309\u4F60\u8BF4\u7684\u6765\u3002"
   - "\u522B\u5E9F\u8BDD\u4E86\uFF0C\u5148\u8FC7\u8FD9\u4E00\u5C42\u3002"
   portraits:
-  - minAffinity: 0
+  - minAffinity: -1
+    maxAffinity: 1
+    portrait: {fileID: 21300000, guid: 91ba17aa8cdf98b40bc79afe70e824c1, type: 3}
+  - minAffinity: -100
+    maxAffinity: -1
+    portrait: {fileID: 21300000, guid: 91ba17aa8cdf98b40bc79afe70e824c1, type: 3}
+  - minAffinity: 1
     maxAffinity: 100
-    portrait: {fileID: -1036129925, guid: 8d0f4564f1616a748a9ee77c241cca87, type: 3}
+    portrait: {fileID: 21300000, guid: 91ba17aa8cdf98b40bc79afe70e824c1, type: 3}
